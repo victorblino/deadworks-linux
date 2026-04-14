@@ -1,5 +1,7 @@
 using System.Reflection;
+using Microsoft.Extensions.Logging;
 using DeadworksManaged.Api;
+using DeadworksManaged.Telemetry;
 
 namespace DeadworksManaged;
 
@@ -13,9 +15,11 @@ internal static class ConCommandManager
     private static readonly Dictionary<string, (IDeadworksPlugin plugin, PropertyInfo prop)> _conVars = new(StringComparer.OrdinalIgnoreCase);
 
     private static readonly Lock _lock = new();
+    private static ILogger _logger = null!;
 
     public static void Initialize()
     {
+        _logger = DeadworksTelemetry.CreateLogger("ConCommandManager");
         RegisterBuiltInCommand("dw_reloadconfig", "Reload plugin configs. Usage: dw_reloadconfig [PluginName]", true, OnReloadConfig);
         RegisterBuiltInCommand("dw_plugin", "Manage plugins. Usage: dw_plugin <list|enable|disable|commands> [PluginName]", true, OnPluginCommand);
     }
@@ -35,13 +39,13 @@ internal static class ConCommandManager
             try
             {
                 if (plugin.ReloadConfig())
-                    Console.WriteLine($"[ConfigManager] Reloaded config for {plugin.Name}");
+                    _logger.LogInformation("Reloaded config for {PluginName}", plugin.Name);
                 else
-                    Console.WriteLine($"[ConfigManager] No config to reload for {plugin.Name}");
+                    _logger.LogDebug("No config to reload for {PluginName}", plugin.Name);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ConfigManager] Failed to reload config for {plugin.Name}: {ex.Message}");
+                _logger.LogError(ex, "Failed to reload config for {PluginName}", plugin.Name);
             }
         }
     }
@@ -133,7 +137,7 @@ internal static class ConCommandManager
             {
                 if (!ctx.IsServerCommand)
                 {
-                    Console.WriteLine($"[ConCommandManager] Command '{name}' is server-only");
+                    _logger.LogWarning("Command {CommandName} is server-only", name);
                     return;
                 }
                 handler(ctx);
@@ -147,7 +151,7 @@ internal static class ConCommandManager
             flags |= (1UL << 25); // FCVAR_CLIENT_CAN_EXECUTE
         NativeRegisterConCommand(name, description, flags);
 
-        Console.WriteLine($"[ConCommandManager] Registered built-in concommand: {name}{(serverOnly ? " (server-only)" : "")}");
+        _logger.LogDebug("Registered built-in concommand: {CommandName}{ServerOnly}", name, serverOnly ? " (server-only)" : "");
     }
 
     public static void RegisterPlugin(string normalizedPath, List<IDeadworksPlugin> plugins)
@@ -200,6 +204,12 @@ internal static class ConCommandManager
             handlers = [.. handlers]; // snapshot
         }
 
+        using var activity = DeadworksTracing.Source.StartActivity("command.dispatch");
+        activity?.SetTag("command.name", command);
+        activity?.SetTag("player.slot", playerSlot);
+
+        DeadworksMetrics.CommandsDispatched.Add(1);
+
         var ctx = new ConCommandContext(playerSlot, command, args);
         foreach (var handler in handlers)
         {
@@ -209,7 +219,7 @@ internal static class ConCommandManager
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ConCommandManager] Handler for '{command}' threw: {ex.Message}");
+                _logger.LogError(ex, "Handler for command {CommandName} threw", command);
             }
         }
     }
@@ -255,7 +265,7 @@ internal static class ConCommandManager
                     {
                         if (!ctx.IsServerCommand)
                         {
-                            Console.WriteLine($"[ConCommandManager] Command '{attr.Name}' is server-only");
+                            _logger.LogWarning("Command {CommandName} is server-only", attr.Name);
                             return;
                         }
                         del(ctx);
@@ -271,7 +281,7 @@ internal static class ConCommandManager
                     flags |= (1UL << 25); // FCVAR_CLIENT_CAN_EXECUTE
                 NativeRegisterConCommand(attr.Name, attr.Description, flags);
 
-                Console.WriteLine($"[ConCommandManager] Registered concommand: {plugin.Name} -> {attr.Name}{(serverOnly ? " (server-only)" : "")}");
+                _logger.LogDebug("Registered concommand: {PluginName} -> {CommandName}{ServerOnly}", plugin.Name, attr.Name, serverOnly ? " (server-only)" : "");
             }
         }
     }
@@ -289,7 +299,7 @@ internal static class ConCommandManager
 
             if (!prop.CanRead || !prop.CanWrite)
             {
-                Console.WriteLine($"[ConCommandManager] Warning: ConVar '{attr.Name}' on {plugin.Name} must have both getter and setter, skipping");
+                _logger.LogWarning("ConVar {ConVarName} on {PluginName} must have both getter and setter, skipping", attr.Name, plugin.Name);
                 continue;
             }
 
@@ -301,7 +311,7 @@ internal static class ConCommandManager
             {
                 if (serverOnly && !ctx.IsServerCommand)
                 {
-                    Console.WriteLine($"[ConCommandManager] ConVar '{attr.Name}' is server-only");
+                    _logger.LogWarning("ConVar {ConVarName} is server-only", attr.Name);
                     return;
                 }
 
@@ -323,7 +333,7 @@ internal static class ConCommandManager
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[ConCommandManager] Failed to set '{attr.Name}': {ex.Message}");
+                    _logger.LogError(ex, "Failed to set ConVar {ConVarName}", attr.Name);
                 }
             };
 
@@ -341,7 +351,7 @@ internal static class ConCommandManager
                 flags |= (1UL << 25); // FCVAR_CLIENT_CAN_EXECUTE
             NativeRegisterConCommand(attr.Name, attr.Description, flags);
 
-            Console.WriteLine($"[ConCommandManager] Registered convar: {plugin.Name} -> {attr.Name} ({prop.PropertyType.Name}){(serverOnly ? " (server-only)" : "")}");
+            _logger.LogDebug("Registered convar: {PluginName} -> {ConVarName} ({TypeName}){ServerOnly}", plugin.Name, attr.Name, prop.PropertyType.Name, serverOnly ? " (server-only)" : "");
         }
     }
 
