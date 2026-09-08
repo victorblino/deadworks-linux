@@ -8,6 +8,10 @@ namespace DeadworksManaged;
 
 public static class EntryPoint
 {
+    /// <summary>Wraps a native entity pointer, or returns null when the pointer is null.</summary>
+    private static unsafe CBaseEntity? EntityOrNull(void* entity)
+        => entity != null ? new CBaseEntity((nint)entity) : null;
+
     [UnmanagedCallersOnly]
     public static unsafe void Initialize(nint callbacksPtr)
     {
@@ -23,6 +27,7 @@ public static class EntryPoint
         NativeLogCallback.Set(logCallback);
 
         NativeInterop.Bind(callbacks);
+        CheatCommandGate.ApplyCheatFlag();
         PluginLoader.LoadAll();
     }
 
@@ -171,29 +176,6 @@ public static class EntryPoint
     }
 
     [UnmanagedCallersOnly]
-    public static unsafe void OnSignonState(byte* protoBytes, int protoLen, byte* outBytes, int* outLen)
-    {
-        var span = new ReadOnlySpan<byte>(protoBytes, protoLen);
-        var msg = CNETMsg_SignonState.Parser.ParseFrom(span);
-
-        var addons = msg.Addons;
-        PluginLoader.DispatchSignonState(ref addons);
-
-        if (addons != msg.Addons)
-        {
-            msg.Addons = addons;
-            var modified = msg.ToByteArray();
-            var outSpan = new Span<byte>(outBytes, 65536);
-            modified.AsSpan().CopyTo(outSpan);
-            *outLen = modified.Length;
-        }
-        else
-        {
-            *outLen = 0;
-        }
-    }
-
-    [UnmanagedCallersOnly]
     public static unsafe byte OnClientConnect(int slot, char* name, ulong xuid, char* ipAddress)
     {
         var args = new ClientConnectEvent
@@ -235,19 +217,12 @@ public static class EntryPoint
         var args = new ClientDisconnectedEvent { Slot = slot, Reason = reason };
         PluginLoader.DispatchClientDisconnect(args);
         Players.SetConnected(slot, false);
+        DeadworksManaged.Api.UI.UIChannel.OnPlayerDisconnect(slot);
     }
 
     [UnmanagedCallersOnly]
     public static void OnPrecacheResources()
     {
-        // Precache all heroes that are available in-game so hero/ability swaps have resources
-        foreach (Heroes hero in Enum.GetValues<Heroes>())
-        {
-            var data = hero.GetHeroData();
-            if (data != null && data.AvailableInGame)
-                Precache.AddHero(hero);
-        }
-
         PluginLoader.DispatchPrecacheResources();
     }
 
@@ -297,37 +272,91 @@ public static class EntryPoint
     }
 
     [UnmanagedCallersOnly]
-    public static unsafe void OnEntityFireOutput(void* entity, void* activator, void* caller, byte* outputNameUtf8)
+    public static unsafe void OnModifierEvent(uint modifierEvent, void* caster, void* target, void* castEntity, void* eventData)
     {
-        if (entity == null) return;
-        var outputName = Marshal.PtrToStringUTF8((nint)outputNameUtf8) ?? "";
-        var ent = new CBaseEntity((nint)entity);
-        var evt = new EntityOutputEvent
+        var args = new ModifierEvent
         {
-            Entity = ent,
-            Activator = activator != null ? new CBaseEntity((nint)activator) : null,
-            Caller = caller != null ? new CBaseEntity((nint)caller) : null,
-            OutputName = outputName
+            Event = (EModifierEvent)modifierEvent,
+            Caster = EntityOrNull(caster),
+            Target = EntityOrNull(target),
+            CastEntity = EntityOrNull(castEntity),
+            EventData = (nint)eventData
         };
-        PluginLoader.DispatchEntityFireOutput(ent.DesignerName, evt);
+        PluginLoader.DispatchModifierEvent(args);
     }
 
     [UnmanagedCallersOnly]
-    public static unsafe void OnEntityAcceptInput(void* entity, void* activator, void* caller, byte* inputNameUtf8, byte* valueUtf8)
+    public static unsafe int OnEntityAcceptInput(byte* classNameUtf8, byte* inputNameUtf8,
+                                                  void* entity, void* activator, void* caller, void* variantValue)
     {
-        if (entity == null) return;
+        if (entity == null) return (int)HookResult.Continue;
+        var className = Marshal.PtrToStringUTF8((nint)classNameUtf8) ?? "";
         var inputName = Marshal.PtrToStringUTF8((nint)inputNameUtf8) ?? "";
-        var value = valueUtf8 != null ? Marshal.PtrToStringUTF8((nint)valueUtf8) : null;
-        var ent = new CBaseEntity((nint)entity);
         var evt = new EntityInputEvent
         {
-            Entity = ent,
-            Activator = activator != null ? new CBaseEntity((nint)activator) : null,
-            Caller = caller != null ? new CBaseEntity((nint)caller) : null,
+            Entity = new CBaseEntity((nint)entity),
+            ClassName = className,
             InputName = inputName,
-            Value = value
+            Activator = EntityOrNull(activator),
+            Caller = EntityOrNull(caller),
+            Value = new EntityIOValue((nint)variantValue),
         };
-        PluginLoader.DispatchEntityAcceptInput(ent.DesignerName, evt);
+        return PluginLoader.DispatchEntityAcceptInputPre(className, evt);
+    }
+
+    [UnmanagedCallersOnly]
+    public static unsafe void OnEntityAcceptInputPost(byte* classNameUtf8, byte* inputNameUtf8,
+                                                       void* entity, void* activator, void* caller, void* variantValue)
+    {
+        if (entity == null) return;
+        var className = Marshal.PtrToStringUTF8((nint)classNameUtf8) ?? "";
+        var inputName = Marshal.PtrToStringUTF8((nint)inputNameUtf8) ?? "";
+        var evt = new EntityInputEvent
+        {
+            Entity = new CBaseEntity((nint)entity),
+            ClassName = className,
+            InputName = inputName,
+            Activator = EntityOrNull(activator),
+            Caller = EntityOrNull(caller),
+            Value = new EntityIOValue((nint)variantValue),
+        };
+        PluginLoader.DispatchEntityAcceptInputPost(className, evt);
+    }
+
+    [UnmanagedCallersOnly]
+    public static unsafe int OnEntityFireOutput(byte* callerClassUtf8, byte* outputNameUtf8,
+                                                 void* activator, void* caller, void* variantValue, float delay)
+    {
+        var callerClass = Marshal.PtrToStringUTF8((nint)callerClassUtf8) ?? "";
+        var outputName = Marshal.PtrToStringUTF8((nint)outputNameUtf8) ?? "";
+        var evt = new EntityOutputEvent
+        {
+            CallerClass = callerClass,
+            OutputName = outputName,
+            Activator = EntityOrNull(activator),
+            Caller = EntityOrNull(caller),
+            Value = new EntityIOValue((nint)variantValue),
+            Delay = delay,
+        };
+        return PluginLoader.DispatchEntityFireOutputPre(callerClass, evt);
+    }
+
+    [UnmanagedCallersOnly]
+    public static unsafe void OnEntityFireOutputPost(byte* callerClassUtf8, byte* outputNameUtf8,
+                                                      void* activator, void* caller, void* variantValue, float delay)
+    {
+        var callerClass = Marshal.PtrToStringUTF8((nint)callerClassUtf8) ?? "";
+        var outputName = Marshal.PtrToStringUTF8((nint)outputNameUtf8) ?? "";
+        var evt = new EntityOutputEvent
+        {
+            CallerClass = callerClass,
+            OutputName = outputName,
+            Activator = EntityOrNull(activator),
+            Caller = EntityOrNull(caller),
+            Value = new EntityIOValue((nint)variantValue),
+            Delay = delay,
+        };
+        PluginLoader.DispatchEntityFireOutputPost(callerClass, evt);
     }
     [UnmanagedCallersOnly]
     public static unsafe ulong OnAbilityAttempt(int playerSlot, void* pawnEntity, ulong heldButtons, ulong changedButtons, ulong scrollButtons, ulong* outForcedButtons)
@@ -419,6 +448,28 @@ public static class EntryPoint
     {
         var args = new CheckTransmitEvent(playerSlot, (nint)transmitBits);
         PluginLoader.DispatchCheckTransmit(args);
+    }
+
+    [UnmanagedCallersOnly]
+    public static unsafe void OnPawnHeroInitialized(void* pawn)
+    {
+        if (pawn == null) return;
+        var p = new CCitadelPlayerPawn((nint)pawn);
+        CCitadelPlayerPawn.DrainHeroInitializedContinuations(p);
+        PluginLoader.DispatchPawnHeroInitialized(p);
+    }
+
+    [UnmanagedCallersOnly]
+    public static void OnGameStateChanged(int newState)
+    {
+        PluginLoader.DispatchGameStateChanged((EGameState)newState);
+    }
+
+    [UnmanagedCallersOnly]
+    public static byte ShouldAllowGameStateChange(int currentState, int newState)
+    {
+        var allow = PluginLoader.DispatchShouldAllowGameStateChange((EGameState)currentState, (EGameState)newState);
+        return (byte)(allow ? 1 : 0);
     }
 
     [UnmanagedCallersOnly]

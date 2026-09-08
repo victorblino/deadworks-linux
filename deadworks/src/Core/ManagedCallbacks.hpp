@@ -28,13 +28,28 @@ struct ManagedCallbacks {
     using OnPrecacheResourcesFn = void(CORECLR_DELEGATE_CALLTYPE *)();
     using OnEntityStartTouchFn = void(CORECLR_DELEGATE_CALLTYPE *)(void *entity, void *other);
     using OnEntityEndTouchFn = void(CORECLR_DELEGATE_CALLTYPE *)(void *entity, void *other);
-    using OnEntityFireOutputFn = void(CORECLR_DELEGATE_CALLTYPE *)(void *entity, void *activator, void *caller, const char *outputName);
-    using OnEntityAcceptInputFn = void(CORECLR_DELEGATE_CALLTYPE *)(void *entity, void *activator, void *caller, const char *inputName, const char *value);
+    // Entity input (CEntityInstance::AcceptInput) — Pre returns HookResult int (0=Continue, 1=Stop, 2=Handled).
+    using OnEntityAcceptInputFn = int(CORECLR_DELEGATE_CALLTYPE *)(const char *className, const char *inputName,
+                                                                    void *entity, void *activator, void *caller,
+                                                                    void *variantValue);
+    using OnEntityAcceptInputPostFn = void(CORECLR_DELEGATE_CALLTYPE *)(const char *className, const char *inputName,
+                                                                        void *entity, void *activator, void *caller,
+                                                                        void *variantValue);
+    // Entity output (CEntityIOOutput::FireOutputInternal) — Pre returns HookResult int.
+    using OnEntityFireOutputFn = int(CORECLR_DELEGATE_CALLTYPE *)(const char *callerClass, const char *outputName,
+                                                                   void *activator, void *caller,
+                                                                   const void *variantValue, float delay);
+    using OnEntityFireOutputPostFn = void(CORECLR_DELEGATE_CALLTYPE *)(const char *callerClass, const char *outputName,
+                                                                       void *activator, void *caller,
+                                                                       const void *variantValue, float delay);
     using OnProcessUsercmdsFn = void(CORECLR_DELEGATE_CALLTYPE *)(int playerSlot, const uint8_t *batchBytes, int batchLen, int numCmds, uint8_t paused, float margin, uint8_t *outBatchBytes, int *outBatchLen);
     using OnAbilityAttemptFn = uint64_t(CORECLR_DELEGATE_CALLTYPE *)(int playerSlot, void *pawnEntity, uint64_t heldButtons, uint64_t changedButtons, uint64_t scrollButtons, uint64_t *outForcedButtons);
     using OnAddModifierFn = int(CORECLR_DELEGATE_CALLTYPE *)(void *modifierProp, void **pCaster, uint32_t *pHAbility, int32_t *pITeam, void *vdata, void *params, void *kv);
-    using OnSignonStateFn = void(CORECLR_DELEGATE_CALLTYPE *)(const uint8_t *protoBytes, int protoLen, uint8_t *outBytes, int *outLen);
     using OnCheckTransmitFn = void(CORECLR_DELEGATE_CALLTYPE *)(int playerSlot, void *transmitBits);
+    using OnPawnHeroInitializedFn = void(CORECLR_DELEGATE_CALLTYPE *)(void *pawn);
+    using OnModifierEventFn = void(CORECLR_DELEGATE_CALLTYPE *)(uint32_t event, void *caster, void *target, void *castEntity, void *eventData);
+    using OnGameStateChangedFn = void(CORECLR_DELEGATE_CALLTYPE *)(int32_t newState);
+    using ShouldAllowGameStateChangeFn = uint8_t(CORECLR_DELEGATE_CALLTYPE *)(int32_t currentState, int32_t newState);
 
     OnStartupServerFn onStartupServer = nullptr;
     OnTakeDamageOldFn onTakeDamageOld = nullptr;
@@ -54,13 +69,18 @@ struct ManagedCallbacks {
     OnPrecacheResourcesFn onPrecacheResources = nullptr;
     OnEntityStartTouchFn onEntityStartTouch = nullptr;
     OnEntityEndTouchFn onEntityEndTouch = nullptr;
-    OnEntityFireOutputFn onEntityFireOutput = nullptr;
+    OnModifierEventFn onModifierEvent = nullptr;
     OnEntityAcceptInputFn onEntityAcceptInput = nullptr;
+    OnEntityAcceptInputPostFn onEntityAcceptInputPost = nullptr;
+    OnEntityFireOutputFn onEntityFireOutput = nullptr;
+    OnEntityFireOutputPostFn onEntityFireOutputPost = nullptr;
     OnProcessUsercmdsFn onProcessUsercmds = nullptr;
     OnAbilityAttemptFn onAbilityAttempt = nullptr;
     OnAddModifierFn onAddModifier = nullptr;
-    OnSignonStateFn onSignonState = nullptr;
     OnCheckTransmitFn onCheckTransmit = nullptr;
+    OnPawnHeroInitializedFn onPawnHeroInitialized = nullptr;
+    OnGameStateChangedFn onGameStateChanged = nullptr;
+    ShouldAllowGameStateChangeFn shouldAllowGameStateChange = nullptr;
 };
 
 void InitializeManagedCallbacks(DotNetHost &host, ManagedCallbacks &managed);

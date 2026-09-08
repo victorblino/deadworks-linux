@@ -25,6 +25,18 @@ public interface IDeadworksPlugin {
 	ILogger Logger => LogResolver.Get(this);
 
 	/// <summary>
+	/// Content addons this plugin needs connecting clients to download, so they do not have to be listed
+	/// in the server config's <c>serverbrowser.content_addons</c> ahead of time.
+	/// <para>
+	/// Merged with the config list and any other plugin's, advertised to clients on connect, and the
+	/// matching <c>deadworks_mods/vpks/&lt;name&gt;.vpk</c> is mounted server-side. Read whenever the
+	/// plugin loads or unloads; if the list changes while the plugin is running, call
+	/// <see cref="DeadworksManaged.Api.ContentAddons.Refresh"/> to re-apply it.
+	/// </para>
+	/// </summary>
+	IReadOnlyList<string> ContentAddons => [];
+
+	/// <summary>
 	/// Called during map load to precache resources (particles, models, etc).
 	/// Use <see cref="Precache.AddResource"/> to register resources.
 	/// </summary>
@@ -106,6 +118,9 @@ public interface IDeadworksPlugin {
 	/// <summary>Called when an entity stops touching another entity.</summary>
 	void OnEntityEndTouch(EntityTouchEvent args) { }
 
+	/// <summary>Called when a modifier event fires (damage taken, ability cast, modifier gained/lost, ...). Observe-only.</summary>
+	void OnModifierEvent(ModifierEvent args) { }
+
 	/// <summary>
 	/// Called each think tick before ability execution.
 	/// Set <see cref="AbilityAttemptEvent.BlockedButtons"/> to prevent specific abilities/items from being cast.
@@ -124,12 +139,28 @@ public interface IDeadworksPlugin {
 	/// </summary>
 	HookResult OnAddModifier(AddModifierEvent args) => HookResult.Continue;
 
-	/// <summary>Called when a SignonState message is about to be sent to a client. Set addons to modify the addons field.</summary>
-	void OnSignonState(ref string addons) { }
-
 	/// <summary>
 	/// Called per-player each tick after the engine builds the default transmit list.
 	/// Use <see cref="CheckTransmitEvent.Hide"/> to prevent entities from being networked to this player.
 	/// </summary>
 	void OnCheckTransmit(CheckTransmitEvent args) { }
+
+	/// <summary>
+	/// Called whenever a pawn's hero abilities and modifiers have just been (re)populated server-side.
+	/// </summary>
+	void OnPawnHeroInitialized(CCitadelPlayerPawn pawn) { }
+
+	/// <summary>
+	/// Called after a CCitadelGameRules::ChangeGameState transition completes, whether the engine
+	/// or a plugin (via <see cref="GameRules.ChangeGameState"/>) started it.
+	/// </summary>
+	void OnGameStateChanged(EGameState newState) { }
+
+	/// <summary>
+	/// Called before an engine-driven CCitadelGameRules::ChangeGameState transition is allowed to
+	/// proceed. Return false to veto it. If multiple plugins implement this, any plugin returning
+	/// false vetoes the transition. Transitions started by a plugin through
+	/// <see cref="GameRules.ChangeGameState"/> are not vetoable. Default: allow.
+	/// </summary>
+	bool OnGameStateChanging(EGameState currentState, EGameState newState) => true;
 }

@@ -57,8 +57,6 @@ public:
     int OnPre_GameEvent(const char *eventName, void *eventPtr);
     // Net Messages (outgoing - broadcast via game event system)
     bool OnPre_PostEventAbstract(int msgId, const CNetMessage *pData, uint64 *clientsMask);
-    // Net Messages (outgoing - per-client via SendNetMessage, catches SignonState etc.)
-    bool OnPre_SendNetMessage(CServerSideClientBase *client, const CNetMessage *pData);
     // ReplyConnection - temporarily inject addons into the server object
     void OnPre_ReplyConnection(void *server, CServerSideClientBase *client);
     void OnPost_ReplyConnection(void *server, CServerSideClientBase *client);
@@ -72,12 +70,24 @@ public:
     bool OnPre_ClientConCommand(void *controller, void *args);
     // Precache
     void OnBuildGameSessionManifest(void *manifest);
+    // Game state
+    void OnGameStateChanged(int newState);
+    bool ShouldAllowGameStateChange(int currentState, int newState);
     // Touch events
     void OnStartTouch(CBaseEntity *entity, CBaseEntity *other);
     void OnEndTouch(CBaseEntity *entity, CBaseEntity *other);
-    // Entity I/O
-    void OnEntityFireOutput(void *entity, void *activator, void *caller, const char *outputName);
-    void OnEntityAcceptInput(void *entity, void *activator, void *caller, const char *inputName, const char *value);
+    // Modifier events - dispatched before the native FireModifierEvent runs (observe-only)
+    void OnPre_FireModifierEvent(EModifierEvent event, CBaseEntity *caster, CBaseEntity *target,
+                               CBaseEntity *castEntity, void *eventData);
+    // Entity I/O — Pre returns HookResult int (0=Continue, 1=Stop, 2=Handled); Post returns void.
+    int OnEntityAcceptInputPre(const char *className, const char *inputName,
+                                void *entity, void *activator, void *caller, void *variantValue);
+    void OnEntityAcceptInputPost(const char *className, const char *inputName,
+                                  void *entity, void *activator, void *caller, void *variantValue);
+    int OnEntityFireOutputPre(const char *callerClass, const char *outputName,
+                               void *activator, void *caller, const void *variantValue, float delay);
+    void OnEntityFireOutputPost(const char *callerClass, const char *outputName,
+                                 void *activator, void *caller, const void *variantValue, float delay);
     // Usercmds
     void OnPre_ProcessUsercmds(int playerSlot, const uint8_t *batchBytes, int batchLen, int numCmds, bool paused, float margin, uint8_t *outBytes, int *outLen);
     // Ability think - returns bitmask of buttons to block, outForcedButtons receives bits to force
@@ -87,6 +97,9 @@ public:
                            void *vdata, void *pParams, void *pKV);
     // CheckTransmit - dispatches per-player to managed code
     void OnPost_CheckTransmit(CCheckTransmitInfo **ppInfoList, int nInfoCount);
+    // InitializeHeroOnPawn - dispatched after the pawn's hero abilities/modifiers
+    // have been (re)populated server-side, regardless of which path got us here
+    void OnPost_InitializeHeroOnPawn(void *pawn);
 
     template <typename T>
     T *GetEntity(CEntityIndex index) {
@@ -108,6 +121,7 @@ private:
         CreateInterfaceFn networksystem;
         CreateInterfaceFn tier0;
         CreateInterfaceFn filesystem_stdio;
+        CreateInterfaceFn soundsystem;
     } InterfaceFactories;
 
     bool m_clientFullyConnected[64]{};

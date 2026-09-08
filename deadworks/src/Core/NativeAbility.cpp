@@ -127,29 +127,53 @@ static uint32_t CloneAbilityVDataWithOverrides(
         return 0;
     }
 
-    // The map's internal CUtlRBTree node array: count at map+0x08, data ptr at map+0x10.
+    // The ability property map is a CUtlOrderedMap<CUtlString, CitadelAbilityProperty_t> whose
+    // elements live in a flat CUtlRBTree node array: element count at map+0x08, node-array
+    // pointer at map+0x10. Each node is laid out as
+    //     [ UtlRBTreeLinks_t<int> (16) | CUtlString key (8) | CitadelAbilityProperty_t elem ]
+    // The elem size (and therefore the node stride) grows across game updates, so it must be
+    // read from the schema at runtime. Trusting sizeof(CitadelAbilityProperty_t) here is what
+    // made this path crash after an update: the stale compile-time stride walked the array with
+    // the wrong pitch and dereferenced garbage CUtlString keys.
     auto *cloneVData = reinterpret_cast<CitadelAbilityVData *>(clone);
     auto *cloneMapBytes = reinterpret_cast<uint8_t *>(cloneVData->m_mapAbilityProperties.Get());
     int nodeCount = *reinterpret_cast<int *>(cloneMapBytes + 0x08);
     auto *origNodeData = *reinterpret_cast<uint8_t **>(cloneMapBytes + 0x10);
+    if (!origNodeData || nodeCount <= 0) {
+        free(clone);
+        return 0;
+    }
 
-    // Node stride: tree metadata (8 bytes) + CUtlString key + CitadelAbilityProperty_t elem
-    constexpr int kTreeNodeMeta = 8;
-    int nodeStride = kTreeNodeMeta + static_cast<int>(sizeof(CUtlString)) + static_cast<int>(sizeof(CitadelAbilityProperty_t));
+    constexpr int kRBTreeLinksSize = 16;                                        // UtlRBTreeLinks_t<int> = 4 * int
+    constexpr int kKeyOffset = kRBTreeLinksSize;                                // CUtlString key follows the links
+    const int kElemOffset = kKeyOffset + static_cast<int>(sizeof(CUtlString));  // elem follows the key
+
+    int elemSize = schema::GetClassSize("CitadelAbilityProperty_t");
+    if (elemSize <= 0)
+        elemSize = static_cast<int>(sizeof(CitadelAbilityProperty_t));          // fallback to last-known size
+    const int nodeStride = kElemOffset + elemSize;
+
     auto *clonedNodes = static_cast<uint8_t *>(malloc(static_cast<size_t>(nodeCount) * nodeStride));
+    if (!clonedNodes) {
+        free(clone);
+        return 0;
+    }
     memcpy(clonedNodes, origNodeData, static_cast<size_t>(nodeCount) * nodeStride);
     *reinterpret_cast<uint8_t **>(cloneMapBytes + 0x10) = clonedNodes;
 
-    // Iterate original map (SDK API), apply overrides to cloned node array by offset.
-    for (int i = 0; i < origMap->MaxElement(); i++) {
-        if (!origMap->IsValidIndex(i)) continue;
+    // Walk the node array with the runtime stride, overriding matching properties' parsed floats.
+    for (int i = 0; i < nodeCount; i++) {
+        uint8_t *origNode = origNodeData + static_cast<size_t>(i) * nodeStride;
+        // Free-slot guard: a live RB-tree node's left-child link (first int) never equals its own index.
+        if (*reinterpret_cast<int32_t *>(origNode) == i) continue;
 
-        const CUtlString &key = origMap->Key(i);
+        const char *keyStr = *reinterpret_cast<const char *const *>(origNode + kKeyOffset); // CUtlString::m_pString
+        if (!keyStr) continue;
+
         for (int oi = 0; oi < overrideCount; oi++) {
-            if (overrideNames[oi] && _stricmp(key.Get(), overrideNames[oi]) == 0) {
-                auto &origElem = origMap->Element(i);
-                auto offset = reinterpret_cast<uintptr_t>(&origElem) - reinterpret_cast<uintptr_t>(origNodeData);
-                float *parsed = reinterpret_cast<CitadelAbilityProperty_t *>(clonedNodes + offset)->As().GetParsedFloats();
+            if (overrideNames[oi] && _stricmp(keyStr, overrideNames[oi]) == 0) {
+                uint8_t *cloneElem = clonedNodes + static_cast<size_t>(i) * nodeStride + kElemOffset;
+                float *parsed = reinterpret_cast<CitadelAbilityProperty_t *>(cloneElem)->As().GetParsedFloats();
                 g_Log->Info("ModifierOverride: {}={} (was {})", overrideNames[oi], overrideValues[oi], parsed[0]);
                 parsed[0] = overrideValues[oi];
                 parsed[1] = overrideValues[oi];
@@ -244,22 +268,11 @@ static void ResolveSlotTableFns(FindSlotEntryFn &findFn, RemoveSlotEntryFn &remo
 // Native implementations
 // ---------------------------------------------------------------------------
 
-static uint8_t __cdecl NativeRemoveAbility(void *pawn, const char *abilityName) {
-    if (!pawn || !abilityName)
-        return 0;
-
-    auto *pPawn = static_cast<CCitadelPlayerPawn *>(pawn);
+static uint8_t RemoveAbilityImpl(CCitadelPlayerPawn *pPawn, CCitadelBaseAbility *ability) {
     auto *comp = pPawn->m_CCitadelAbilityComponent.Get();
     auto compAddr = reinterpret_cast<uintptr_t>(comp);
 
-    auto *ability = static_cast<CCitadelBaseAbility *>(comp->FindAbilityByName(abilityName));
-    if (!ability) {
-        g_Log->Info("RemoveAbility: FindAbilityByName('{}') returned null", abilityName);
-        return 0;
-    }
-
     uint32_t rawHandle = static_cast<uint32_t>(ability->GetRefEHandle().ToInt());
-    g_Log->Info("RemoveAbility: found '{}' handle=0x{:X}", abilityName, rawHandle);
 
     static FindSlotEntryFn findSlotFn = nullptr;
     static RemoveSlotEntryFn removeSlotFn = nullptr;
@@ -268,7 +281,6 @@ static uint8_t __cdecl NativeRemoveAbility(void *pawn, const char *abilityName) 
     uint16_t slot = ability->m_eAbilitySlot.Get();
     auto *slotTable = reinterpret_cast<void *>(compAddr + kAbilityCompSlotTable);
     int entryIdx = findSlotFn(slotTable, &slot);
-    g_Log->Info("RemoveAbility: slot={} entry={}", slot, entryIdx);
     if (entryIdx != -1)
         removeSlotFn(slotTable, entryIdx);
 
@@ -292,8 +304,34 @@ static uint8_t __cdecl NativeRemoveAbility(void *pawn, const char *abilityName) 
     comp->m_vecThinkableAbilities.NetworkStateChanged();
 
     UTIL_Remove(static_cast<CEntityInstance *>(ability));
-    g_Log->Info("RemoveAbility: done for '{}'", abilityName);
     return 1;
+}
+
+static uint8_t __cdecl NativeRemoveAbility(void *pawn, const char *abilityName) {
+    if (!pawn || !abilityName)
+        return 0;
+
+    auto *pPawn = static_cast<CCitadelPlayerPawn *>(pawn);
+    auto *comp = pPawn->m_CCitadelAbilityComponent.Get();
+
+    auto *ability = static_cast<CCitadelBaseAbility *>(comp->FindAbilityByName(abilityName));
+    if (!ability)
+        return 0;
+
+    return RemoveAbilityImpl(pPawn, ability);
+}
+
+static uint8_t __cdecl NativeRemoveAbilityByEntity(void *pawn, void *ability) {
+    if (!pawn || !ability)
+        return 0;
+    return RemoveAbilityImpl(static_cast<CCitadelPlayerPawn *>(pawn),
+                             static_cast<CCitadelBaseAbility *>(ability));
+}
+
+static void *__cdecl NativeFindAbilityByName(void *abilityComponent, const char *abilityName) {
+    if (!abilityComponent || !abilityName)
+        return nullptr;
+    return static_cast<CCitadelAbilityComponent *>(abilityComponent)->FindAbilityByName(abilityName);
 }
 
 static void *__cdecl NativeAddAbility(void *pawn, const char *abilityName, uint16_t slot) {
@@ -316,14 +354,70 @@ static void *__cdecl NativeAddAbility(void *pawn, const char *abilityName, uint1
     return comp->CreateAndRegisterAbility(def, slot);
 }
 
-static void *__cdecl NativeAddItem(void *pawn, const char *itemName, int32_t upgradeTier) {
+static void *__cdecl NativeAddItem(void *pawn, const char *itemName, int nInitialUpgradeBits) {
     if (!pawn || !itemName) return nullptr;
-    return static_cast<CCitadelPlayerPawn *>(pawn)->AddItem(itemName, 0, upgradeTier);
+    return static_cast<CCitadelPlayerPawn *>(pawn)->AddItem(itemName, nInitialUpgradeBits, -1);
 }
 
 static uint8_t __cdecl NativeSellItem(void *pawn, const char *itemName, uint8_t bFullRefund, uint8_t bForceSellPrice) {
     if (!pawn || !itemName) return 0;
     return static_cast<CCitadelPlayerPawn *>(pawn)->SellItem(itemName, bFullRefund, bForceSellPrice);
+}
+
+// ---------------------------------------------------------------------------
+// Item imbuement
+//
+// An imbuable item ("upgrade_echo_shard", ...) attaches itself to one of the hero's
+// abilities; the engine records that in CCitadelBaseAbility::m_vecImbuedAbilities on the
+// item entity. Only the game's imbue path fills that in, so an item handed out through
+// AddItem alone stays unattached. These three natives are the pieces `giveitem <item>
+// <slot>` uses, exposed separately so the managed side can validate before it grants.
+// ---------------------------------------------------------------------------
+
+static CitadelAbilityVData *LookupItemVData(const char *itemName) {
+    return reinterpret_cast<CitadelAbilityVData *>(
+        LookupSubclassDefinitionByName(EntitySubclassScope_t::SUBCLASS_SCOPE_ABILITIES, itemName));
+}
+
+static CitadelAbilityVData *GetAbilityVData(void *ability) {
+    return reinterpret_cast<CitadelAbilityVData *>(static_cast<CBaseEntity *>(ability)->GetSubclassVData());
+}
+
+// Returns the item's ECitadelTargetAbilityEffects (0 when the item cannot be imbued),
+// or -1 when no ability/item definition by that name exists.
+static int32_t __cdecl NativeGetItemImbueEffects(const char *itemName) {
+    if (!itemName) return -1;
+    auto *vdata = LookupItemVData(itemName);
+    if (!vdata) return -1;
+    return static_cast<int32_t>(vdata->m_TargetAbilityEffectsToApply.Get());
+}
+
+// Whether the item named itemName may be imbued into the given ability entity.
+static uint8_t __cdecl NativeCanImbueAbility(void *targetAbility, const char *itemName) {
+    if (!targetAbility || !itemName) return 0;
+
+    auto *itemVData = LookupItemVData(itemName);
+    if (!itemVData || !itemVData->CanBeImbued()) return 0;
+
+    auto *targetVData = GetAbilityVData(targetAbility);
+    if (!targetVData) return 0;
+
+    return targetVData->CanImbueAbility(itemVData) ? 1 : 0;
+}
+
+// Imbues an already-granted item entity into targetAbility. Returns 0 without touching
+// either entity when the pairing is not allowed.
+static uint8_t __cdecl NativeImbueAbility(void *item, void *targetAbility) {
+    if (!item || !targetAbility) return 0;
+
+    auto *itemVData = GetAbilityVData(item);
+    auto *targetVData = GetAbilityVData(targetAbility);
+    if (!itemVData || !targetVData) return 0;
+    if (!itemVData->CanBeImbued()) return 0;
+    if (!targetVData->CanImbueAbility(itemVData)) return 0;
+
+    static_cast<CCitadelBaseAbility *>(item)->ImbueAbility(targetAbility);
+    return 1;
 }
 
 static void *__cdecl NativeAddModifier(void *entity, const char *modifierName, void *kv3,
@@ -373,11 +467,11 @@ static void *__cdecl NativeAddModifier(void *entity, const char *modifierName, v
                 ov.clonedVDataHash = CloneAbilityVDataWithOverrides(
                     ov.abilityHash, overrideNames, overrideValues, overrideCount);
             }
-            g_Log->Info("AddModifier: parent='{}' hash=0x{:X} cloneHash=0x{:X} hookValid={}",
+            /* g_Log->Info("AddModifier: parent='{}' hash=0x{:X} cloneHash=0x{:X} hookValid={}",
                         parentName, ov.abilityHash, ov.clonedVDataHash,
-                        static_cast<bool>(g_Hook_LookupVDataByHash));
+                        static_cast<bool>(g_Hook_LookupVDataByHash));*/
         } else {
-            g_Log->Info("AddModifier: no scope in '{}', overrides={}", modifierName, overrideCount);
+            // g_Log->Info("AddModifier: no scope in '{}', overrides={}", modifierName, overrideCount);
         }
     }
 
@@ -449,9 +543,14 @@ static void __cdecl NativeSetUpgradeBits(void *ability, int32_t newBits) {
 
 void deadworks::PopulateAbilityNatives(NativeCallbacks &cb) {
     cb.RemoveAbility = &NativeRemoveAbility;
+    cb.RemoveAbilityByEntity = &NativeRemoveAbilityByEntity;
+    cb.FindAbilityByName = &NativeFindAbilityByName;
     cb.AddAbility = &NativeAddAbility;
     cb.AddItem = &NativeAddItem;
     cb.SellItem = &NativeSellItem;
+    cb.GetItemImbueEffects = &NativeGetItemImbueEffects;
+    cb.CanImbueAbility = &NativeCanImbueAbility;
+    cb.ImbueAbility = &NativeImbueAbility;
     cb.AddModifier = &NativeAddModifier;
     cb.RemoveModifier = &NativeRemoveModifier;
     cb.ExecuteAbilityBySlot = &NativeExecuteAbilityBySlot;
@@ -461,20 +560,13 @@ void deadworks::PopulateAbilityNatives(NativeCallbacks &cb) {
     cb.ToggleActivate = &NativeToggleActivate;
     cb.SetUpgradeBits = &NativeSetUpgradeBits;
 
-    // Install hooks for modifier ability value overrides (optional)
-    auto opt = MemoryDataLoader::Get().GetOffset("CCitadelModifier::AutoRegisterAbilityValues");
-    if (opt) {
-        g_Hook_AutoRegisterValues = safetyhook::create_inline(opt.value(), &Hook_AutoRegisterValues);
-        g_Log->Info("Hooked CCitadelModifier::AutoRegisterAbilityValues");
-    } else {
-        g_Log->Warning("CCitadelModifier::AutoRegisterAbilityValues signature not found");
-    }
+    g_Hook_AutoRegisterValues = safetyhook::create_inline(
+        MemoryDataLoader::Get().GetOffset("CCitadelModifier::AutoRegisterAbilityValues").value(),
+        &Hook_AutoRegisterValues);
+    g_Log->Info("Hooked CCitadelModifier::AutoRegisterAbilityValues");
 
-    auto opt2 = MemoryDataLoader::Get().GetOffset("LookupVDataByHash");
-    if (opt2) {
-        g_Hook_LookupVDataByHash = safetyhook::create_inline(opt2.value(), &Hook_LookupVDataByHash);
-        g_Log->Info("Hooked LookupVDataByHash for per-instance modifier value overrides");
-    } else {
-        g_Log->Warning("LookupVDataByHash signature not found - per-instance overrides unavailable");
-    }
+    g_Hook_LookupVDataByHash = safetyhook::create_inline(
+        MemoryDataLoader::Get().GetOffset("LookupVDataByHash").value(),
+        &Hook_LookupVDataByHash);
+    g_Log->Info("Hooked LookupVDataByHash for per-instance modifier value overrides");
 }

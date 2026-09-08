@@ -2,6 +2,8 @@
 #include "NativeOffsets.hpp"
 #include "Deadworks.hpp"
 
+#include <stdexcept>
+
 #include "../Memory/MemoryDataLoader.hpp"
 #include "../SDK/CBaseEntity.hpp"
 #include "../SDK/CCitadelPlayerController.hpp"
@@ -21,23 +23,27 @@ using GetHeroTableFn = void *(__fastcall *)();
 using HeroPrecacheFn = void(__fastcall *)(void *globalSet, const char *heroName, void *resourceCtx);
 using GetHeroDataManagerFn = void *(*)();
 using HeroNameToIdFn = int *(*)(void *manager, int *outId, const char *heroName);
+using GetHeroByIdFn = void *(*)(void *manager, unsigned int heroId);
 using CreateHeroPawnFn = void *(*)(void *controller, int teamNum);
-using SelectHeroInternalFn = void (*)(void *pawn, const char *heroName);
+using SelectHeroInternalFn = void (*)(void *pawn, void *heroDef);
 using TeleportFn = void (*)(CBaseEntity *entity, const Vector *position, const QAngle *angles, const Vector *velocity);
 
 // --- Resolved wrappers ---
 
-static void SelectHeroInternal(void *pawn, const char *heroName) {
+// Since the July 2026 patch this takes a CHeroDefinition* rather than a hero
+// name - the name->definition wrapper was inlined into ClientConCommand, so we
+// resolve the name ourselves via the CHeroDefinitionManager helpers below.
+static void SelectHeroInternal(void *pawn, void *heroDef) {
     static const auto fn = reinterpret_cast<SelectHeroInternalFn>(
         MemoryDataLoader::Get().GetOffset("CCitadelPlayerPawn::SelectHeroInternal").value());
-    fn(pawn, heroName);
+    fn(pawn, heroDef);
 }
 
 static void *GetHeroDataManager() {
-    static const auto selectHeroAddr =
-        MemoryDataLoader::Get().GetOffset("CCitadelPlayerPawn::SelectHeroInternal").value();
+    static const auto anchorAddr =
+        MemoryDataLoader::Get().GetOffset("CHeroDefinitionManager::GetManagerAnchor").value();
     static const auto fn = reinterpret_cast<GetHeroDataManagerFn>(
-        ResolveE8Call(selectHeroAddr + kSelectHero_GetManagerCall));
+        ResolveE8Call(anchorAddr + kHeroDefMgrAnchor_GetManagerCall));
     return fn();
 }
 
@@ -49,7 +55,18 @@ static int HeroNameToId(void *manager, const char *heroName) {
     return outId;
 }
 
+static void *GetHeroById(void *manager, int heroId) {
+    static const auto fn = reinterpret_cast<GetHeroByIdFn>(
+        MemoryDataLoader::Get().GetOffset("CHeroDefinitionManager::GetHeroById").value());
+    return fn(manager, static_cast<unsigned int>(heroId));
+}
+
 // --- Static function pointers ---
+
+// Controller bool gating the hero teardown in CCitadelPlayerPawn::OnTeamChanged.
+// While set (the default), a real team change destroys the pawn's abilities, items
+// and hero. Name is a guess. ResolveHeroStatics throws if it cannot be resolved.
+static uintptr_t g_ResetHeroOnTeamChangeOffset = 0;
 
 static EmitSoundParamsFn g_pEmitSoundParams = nullptr;
 static PawnResetHeroFn g_pPawnResetHero = nullptr;
@@ -86,28 +103,44 @@ static void *__cdecl NativeGetHeroData(const char *heroName) {
         return nullptr;
 
     int heroId = HeroNameToId(manager, heroName);
-    if (!heroId)
+    if (heroId <= 0)
         return nullptr;
 
-    int count = *reinterpret_cast<int *>(manager);
-    if (heroId <= 0 || static_cast<unsigned int>(heroId) >= static_cast<unsigned int>(count))
-        return nullptr;
-
-    void **array = *reinterpret_cast<void ***>(reinterpret_cast<uintptr_t>(manager) + 8);
-    void *data = array[heroId];
+    // GetHeroById does its own bounds check against the manager's hero count.
+    void *data = GetHeroById(manager, heroId);
     g_Log->Debug("GetHeroData({}): id={} ptr={}", heroName, heroId, data ? "found" : "null");
     return data;
 }
 
-static void __cdecl NativeChangeTeam(void *controller, int32_t teamNum) {
+/// With `bKeepHero` the pawn keeps its hero, abilities and items across the change.
+static void __cdecl NativeChangeTeam(void *controller, int32_t teamNum, uint8_t bKeepHero) {
     if (!controller)
         return;
+
     auto changeTeamFn = GetVFunc<void (*)(void *, int)>(controller, kVtblChangeTeam);
+
+    if (!bKeepHero) {
+        changeTeamFn(controller, teamNum);
+        return;
+    }
+
+    // Restore the previous value rather than hardcoding 1 so nesting is safe.
+    auto *pFlag = reinterpret_cast<uint8_t *>(
+        reinterpret_cast<uintptr_t>(controller) + g_ResetHeroOnTeamChangeOffset);
+    const uint8_t previous = *pFlag;
+    *pFlag = 0;
     changeTeamFn(controller, teamNum);
+    *pFlag = previous;
 }
 
 static void __cdecl NativeSelectHero(void *controller, const char *heroName) {
     if (!controller || !heroName)
+        return;
+
+    // Resolve the hero definition first, matching the game's own ordering in
+    // ClientConCommand - an unknown hero name must not spawn a pawn.
+    void *heroDef = NativeGetHeroData(heroName);
+    if (!heroDef)
         return;
 
     auto *pawn = static_cast<CCitadelPlayerController *>(controller)->GetHeroPawn();
@@ -120,7 +153,7 @@ static void __cdecl NativeSelectHero(void *controller, const char *heroName) {
     if (!pawn)
         return;
 
-    SelectHeroInternal(pawn, heroName);
+    SelectHeroInternal(pawn, heroDef);
 }
 
 static void __cdecl NativePrecacheResource(const char *path) {
@@ -150,30 +183,25 @@ static void __cdecl NativeTeleport(void *entity, const float *position, const fl
 // ---------------------------------------------------------------------------
 
 void deadworks::ResolveHeroStatics() {
-    {
-        auto opt = MemoryDataLoader::Get().GetOffset("CCitadelPlayerPawn::ResetHero");
-        if (opt) g_pPawnResetHero = reinterpret_cast<PawnResetHeroFn>(opt.value());
-    }
+    g_pPawnResetHero = reinterpret_cast<PawnResetHeroFn>(
+        MemoryDataLoader::Get().GetOffset("CCitadelPlayerPawn::ResetHero").value());
 
-    {
-        auto opt = MemoryDataLoader::Get().GetOffset("CBaseEntity::EmitSoundParams");
-        if (opt) {
-            g_pEmitSoundParams = reinterpret_cast<EmitSoundParamsFn>(opt.value());
-            g_Log->Info("Resolved CBaseEntity::EmitSoundParams: {:p}", reinterpret_cast<void *>(g_pEmitSoundParams));
-        } else {
-            g_Log->Error("Failed to find CBaseEntity::EmitSoundParams signature");
-        }
-    }
+    g_pEmitSoundParams = reinterpret_cast<EmitSoundParamsFn>(
+        MemoryDataLoader::Get().GetOffset("CBaseEntity::EmitSoundParams").value());
+    g_Log->Info("Resolved CBaseEntity::EmitSoundParams: {:p}", reinterpret_cast<void *>(g_pEmitSoundParams));
 
-    {
-        auto addResOpt = MemoryDataLoader::Get().GetOffset("AddResource");
-        if (addResOpt) {
-            g_pAddResource = reinterpret_cast<AddResourceFn>(addResOpt.value());
-            g_Log->Info("Resolved AddResource: {:p}", reinterpret_cast<void *>(g_pAddResource));
-        } else {
-            g_Log->Error("Failed to find AddResource signature");
-        }
+    g_pAddResource = reinterpret_cast<AddResourceFn>(
+        MemoryDataLoader::Get().GetOffset("AddResource").value());
+    g_Log->Info("Resolved AddResource: {:p}", reinterpret_cast<void *>(g_pAddResource));
+
+    const auto anchor = MemoryDataLoader::Get().GetOffset("CCitadelPlayerController::ChangeTeamKeepHero").value();
+    const int32_t disp = *reinterpret_cast<const int32_t *>(anchor + kChangeTeamKeepHero_FlagDisp);
+    if (disp <= 0 || disp >= kMaxPlayerControllerSize) {
+        g_Log->Critical("m_bResetHeroOnTeamChange displacement out of range ({:#x})", disp);
+        throw std::runtime_error("m_bResetHeroOnTeamChange displacement out of range");
     }
+    g_ResetHeroOnTeamChangeOffset = static_cast<uintptr_t>(disp);
+    g_Log->Info("Resolved m_bResetHeroOnTeamChange: controller+{:#x}", g_ResetHeroOnTeamChangeOffset);
 }
 
 void deadworks::ResolveHeroPrecacheFns() {
@@ -182,7 +210,7 @@ void deadworks::ResolveHeroPrecacheFns() {
     g_pHeroPrecacheGlobal = reinterpret_cast<void *>(ResolveLea(addr + kBGSM_PrecacheGlobalLea));
     g_pHeroPrecache = reinterpret_cast<HeroPrecacheFn>(ResolveE8Call(addr + kBGSM_PrecacheCall));
     g_Log->Info("HeroPrecache: table={} precache={} global={}",
-        (void *)g_pGetHeroTable, (void *)g_pHeroPrecache, g_pHeroPrecacheGlobal);
+                (void *)g_pGetHeroTable, (void *)g_pHeroPrecache, g_pHeroPrecacheGlobal);
 }
 
 bool deadworks::IsHeroPrecacheResolved() {

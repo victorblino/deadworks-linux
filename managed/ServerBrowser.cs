@@ -50,14 +50,7 @@ internal static class ServerBrowser
         }
 
         ResolveConVars();
-        ApplyServerAddons();
         LoadOrCreateCredentials();
-    }
-
-    public static void OnStartupServer()
-    {
-        if (_config.Unlisted || Server.HasCommandLineParm("-nomaster")) return;
-        ApplyServerAddons();
     }
 
     public static void Shutdown()
@@ -190,7 +183,7 @@ internal static class ServerBrowser
 
     private static void StartHeartbeat()
     {
-        var interval = TimeSpan.FromSeconds(Math.Max(_config.HeartbeatIntervalSeconds, 10));
+        var interval = TimeSpan.FromSeconds(Math.Max(_config.HeartbeatIntervalSeconds, 30));
         _heartbeatTimer = new Timer(_ => SendHeartbeat(), null, interval, interval);
     }
 
@@ -246,30 +239,14 @@ internal static class ServerBrowser
         }
     }
 
-    private static void ApplyServerAddons()
-    {
-        if (_config.ContentAddons.Count == 0) return;
-
-        var addons = string.Join(",", _config.ContentAddons);
-        Server.SetAddons(addons);
-        _logger.LogInformation("Server addons set to {Addons}", addons);
-
-        foreach (var addon in _config.ContentAddons)
-        {
-            var vpkPath = $"deadworks_mods/vpks/{addon}.vpk";
-            if (Server.AddSearchPath(vpkPath))
-                _logger.LogDebug("Mounted server addon: {VpkPath}", vpkPath);
-            else
-                _logger.LogWarning("Failed to mount addon: {VpkPath}", vpkPath);
-        }
-    }
-
     private static object BuildPayload()
     {
         var players = new List<object>();
 
         foreach (var controller in Players.GetAll())
         {
+            if (controller.IsBot) continue;
+
             var pawn = controller.GetHeroPawn();
             var stats = pawn?.PlayerData;
 
@@ -299,7 +276,7 @@ internal static class ServerBrowser
             mods = PluginRegistry.GetLoadedPluginNames()
                 .Select(n => new { name = n, type = "plugin", version = "1.0.0" })
                 .ToList<object>(),
-            content_addons = _config.ContentAddons,
+            content_addons = ContentAddonManager.Active,
             extra_maps = _config.ExtraMaps,
             name = ConVar.Find("hostname")?.GetString() ?? _serverName,
             version = typeof(ServerBrowser).Assembly.GetName().Version?.ToString() ?? "",

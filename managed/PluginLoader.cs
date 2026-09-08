@@ -4,6 +4,7 @@ using System.Runtime.Loader;
 using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using DeadworksManaged.Api;
+using DeadworksManaged.Api.UI;
 using DeadworksManaged.Telemetry;
 
 namespace DeadworksManaged;
@@ -57,10 +58,6 @@ internal static partial class PluginLoader
     private static readonly Dictionary<int, List<Delegate>> _incomingNetMsgHandlers = new();
     private static readonly Dictionary<string, List<(int msgId, NetMessageDirection dir, Delegate handler)>> _pluginNetMsgHandlers = new(StringComparer.OrdinalIgnoreCase);
 
-    // Entity IO hooks: "designerName:outputName" -> list of output handlers; "designerName:inputName" -> list of input handlers
-    private static readonly Dictionary<string, List<Action<EntityOutputEvent>>> _outputHooks = new(StringComparer.Ordinal);
-    private static readonly Dictionary<string, List<Action<EntityInputEvent>>> _inputHooks = new(StringComparer.Ordinal);
-
     private static string _pluginsDir = "";
     public static string PluginsDir => _pluginsDir;
 
@@ -107,9 +104,11 @@ internal static partial class PluginLoader
         TimerRegistry.Initialize();
         ConfigManager.Initialize();
         ConCommandManager.Initialize();
+        UIBootstrap.Initialize();
         ServerBrowser.Initialize();
         PluginStateManager.Initialize();
         PluginRegistry.Resolve = () => _pluginSnapshot.Select(p => p.Name).ToArray();
+        ContentAddonManager.Initialize(() => _pluginSnapshot);
 
         GameEvents.OnAddListener = OnManualAddListenerWithHandle;
         GameEvents.OnRemoveListener = OnManualRemoveListener;
@@ -119,8 +118,8 @@ internal static partial class PluginLoader
         NetMessages.OnHookAdd = OnNetMessageHookAddWithHandle;
         NetMessages.OnHookRemove = OnNetMessageHookRemove;
 
-        EntityIO.OnHookOutput = OnEntityIOHookOutput;
-        EntityIO.OnHookInput = OnEntityIOHookInput;
+        EntityIO.OnHookInput = OnEntityIOHookInputProgrammatic;
+        EntityIO.OnHookOutput = OnEntityIOHookOutputProgrammatic;
 
         var baseDir = Path.GetDirectoryName(typeof(PluginLoader).Assembly.Location);
         if (baseDir is null)
@@ -281,8 +280,10 @@ internal static partial class PluginLoader
             RebuildSnapshot();
             RegisterPluginEventHandlers(normalizedPath, plugins);
             RegisterPluginNetMessageHandlers(normalizedPath, plugins);
+            RegisterPluginEntityIOHooks(normalizedPath, plugins);
             RegisterPluginChatCommands(normalizedPath, plugins);
             ConCommandManager.RegisterPlugin(normalizedPath, plugins);
+            Commands.CommandRegistration.RegisterPluginCommands(normalizedPath, plugins, _chatCommandRegistry);
         }
 
         sw.Stop();
@@ -290,6 +291,7 @@ internal static partial class PluginLoader
             new KeyValuePair<string, object?>("plugin.name", pluginFileName));
         DeadworksMetrics.PluginsLoaded.Add(1,
             new KeyValuePair<string, object?>("plugin.name", pluginFileName));
+        ContentAddonManager.Refresh();
     }
 
     private static void UnloadPlugin(string normalizedPath)
@@ -305,6 +307,7 @@ internal static partial class PluginLoader
             RebuildSnapshot();
             _eventRegistry.UnregisterPlugin(normalizedPath);
             UnregisterPluginNetMessageHandlers(normalizedPath);
+            UnregisterPluginEntityIOHooks(normalizedPath);
             _chatCommandRegistry.UnregisterPlugin(normalizedPath);
             ConCommandManager.UnregisterPlugin(normalizedPath);
             PluginRegistrationTracker.Remove(normalizedPath);
@@ -330,6 +333,8 @@ internal static partial class PluginLoader
 
         entry.Context.Unload();
         DeadworksMetrics.PluginsUnloaded.Add(1);
+
+        ContentAddonManager.Refresh();
     }
 
     // --- File watcher ---
@@ -439,6 +444,26 @@ internal static partial class PluginLoader
         return result;
     }
 
+    /// <summary>Any plugin returning false vetoes. Every plugin is still invoked; not a HookResult-style max, a plain AND.</summary>
+    private static bool DispatchToPluginsAllAllow(Func<IDeadworksPlugin, bool> invoke, string methodName)
+    {
+        var snapshot = _pluginSnapshot;
+        var allow = true;
+        foreach (var plugin in snapshot)
+        {
+            try
+            {
+                if (!invoke(plugin))
+                    allow = false;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PluginLoader] {plugin.Name}.{methodName} threw: {ex.Message}");
+            }
+        }
+        return allow;
+    }
+
     // --- Plugin lifecycle dispatchers ---
 
     public static void DispatchPrecacheResources()
@@ -450,7 +475,7 @@ internal static partial class PluginLoader
         activity?.SetTag("map.name", Server.MapName);
 
         TimerRegistry.CancelAllMapChangeTimers();
-        ServerBrowser.OnStartupServer();
+        ContentAddonManager.OnStartupServer();
         DispatchToPlugins(p => p.OnStartupServer(), nameof(IDeadworksPlugin.OnStartupServer));
         _logger.LogInformation("Server started on map {MapName}", Server.MapName);
     }
@@ -462,6 +487,7 @@ internal static partial class PluginLoader
     {
         _frameStopwatch.Restart();
         TimerEngine.OnTick();
+        UI.Tick();
         DispatchToPlugins(p => p.OnGameFrame(simulating, firstTick, lastTick), nameof(IDeadworksPlugin.OnGameFrame));
         _frameStopwatch.Stop();
 
@@ -543,6 +569,7 @@ internal static partial class PluginLoader
         GameRules.OnEntityDeleted(args.Entity);
         DispatchToPlugins(p => p.OnEntityDeleted(args), nameof(IDeadworksPlugin.OnEntityDeleted));
         EntityDataRegistry.OnEntityDeleted(args.Entity.EntityHandle);
+        CCitadelPlayerPawn.OnEntityDeleted(args.Entity.Handle);
     }
 
     public static HookResult DispatchTakeDamage(TakeDamageEvent args)
@@ -560,6 +587,9 @@ internal static partial class PluginLoader
     public static void DispatchEntityEndTouch(EntityTouchEvent args)
         => DispatchToPlugins(p => p.OnEntityEndTouch(args), nameof(IDeadworksPlugin.OnEntityEndTouch));
 
+    public static void DispatchModifierEvent(ModifierEvent args)
+        => DispatchToPlugins(p => p.OnModifierEvent(args), nameof(IDeadworksPlugin.OnModifierEvent));
+
     public static void DispatchAbilityAttempt(AbilityAttemptEvent args)
         => DispatchToPlugins(p => p.OnAbilityAttempt(args), nameof(IDeadworksPlugin.OnAbilityAttempt));
 
@@ -569,17 +599,17 @@ internal static partial class PluginLoader
     public static HookResult DispatchAddModifier(AddModifierEvent args)
         => DispatchToPluginsWithResult(p => p.OnAddModifier(args), nameof(IDeadworksPlugin.OnAddModifier));
 
-    public static void DispatchSignonState(ref string addons)
-    {
-        foreach (var plugin in _pluginSnapshot)
-        {
-            try { plugin.OnSignonState(ref addons); }
-            catch (Exception ex) { _logger.LogError(ex, "Plugin {PluginName}.OnSignonState error", plugin.Name); }
-        }
-    }
-
     public static void DispatchCheckTransmit(CheckTransmitEvent args)
         => DispatchToPlugins(p => p.OnCheckTransmit(args), nameof(IDeadworksPlugin.OnCheckTransmit));
+
+    public static void DispatchPawnHeroInitialized(CCitadelPlayerPawn pawn)
+        => DispatchToPlugins(p => p.OnPawnHeroInitialized(pawn), nameof(IDeadworksPlugin.OnPawnHeroInitialized));
+
+    public static void DispatchGameStateChanged(EGameState newState)
+        => DispatchToPlugins(p => p.OnGameStateChanged(newState), nameof(IDeadworksPlugin.OnGameStateChanged));
+
+    public static bool DispatchShouldAllowGameStateChange(EGameState currentState, EGameState newState)
+        => DispatchToPluginsAllAllow(p => p.OnGameStateChanging(currentState, newState), nameof(IDeadworksPlugin.OnGameStateChanging));
 
     public static void UnloadAll()
     {
@@ -601,12 +631,14 @@ internal static partial class PluginLoader
             _outgoingNetMsgHandlers.Clear();
             _incomingNetMsgHandlers.Clear();
             _pluginNetMsgHandlers.Clear();
-            _outputHooks.Clear();
-            _inputHooks.Clear();
+            _entityInputHooks.Clear();
+            _entityOutputHooks.Clear();
+            _pluginEntityIOHandlers.Clear();
         }
 
         ConCommandManager.Clear();
         PluginRegistrationTracker.Clear();
+        GameRules.SetWaitingForPlayersRoster(0, 0);
 
         // Dispose all timer services and reset engine
         TimerRegistry.Clear();

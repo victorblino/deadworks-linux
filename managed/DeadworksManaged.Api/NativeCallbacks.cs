@@ -48,6 +48,7 @@ internal struct NativeCallbacks
 	public nint KV3SetDouble;
 	public nint KV3SetVector;
 	public nint GetEntityByIndex;
+	public nint FindEntityByName;
 	public nint GetEntityHandle;
 	public nint CreateEntityByName;
 	public nint QueueSpawnEntity;
@@ -74,10 +75,11 @@ internal struct NativeCallbacks
 	public nint GetUtlVectorSize;
 	public nint GetUtlVectorData;
 	public nint RemoveAbility;
+	public nint RemoveAbilityByEntity;
+	public nint FindAbilityByName;
 	public nint AddAbility;
 	public nint AddItem;
 	public nint SellItem;
-	public nint HurtEntity;
 	public nint CreateDamageInfo;
 	public nint DestroyDamageInfo;
 	public nint TakeDamage;
@@ -87,6 +89,7 @@ internal struct NativeCallbacks
 	public nint CreateConVar;
 	public nint ExecuteServerCommand;
 	public nint SetModel;
+	public nint GetModelName;
 	public nint TraceShapeFn;
 	public nint PhysicsQueryPtr;
 	public nint GetConVarAt;
@@ -98,6 +101,7 @@ internal struct NativeCallbacks
 	public nint ToggleActivate;
 	public nint GetMaxHealth;
 	public nint Heal;
+	public nint SetScale;
 	public nint GetGlobalVars;
 	public nint SetEngineLogCallback;
 	public nint SetUpgradeBits;
@@ -110,4 +114,22 @@ internal struct NativeCallbacks
 	public nint EKVSetStringToken;
 	public nint ResolveDesignerName;
 	public nint LookupVDataByHash;
+	public nint SpawnObserverPawn;
+	public nint ObserverServicesSetTarget;
+	public nint ObserverServicesSetMode;
+	public nint TakeSoundEventGuid;
+	public nint VariantGetType;
+	public nint VariantToCString;
+	public nint VariantToInt64;
+	public nint VariantToFloat64;
+	public nint VariantToBool;
+	public nint VariantToEHandle;
+	public nint VariantToVector;
+	public nint VariantToColor;
+	public nint AddConCommandFlags;
+	public nint GetItemImbueEffects;
+	public nint CanImbueAbility;
+	public nint ImbueAbility;
+	public nint ChangeGameState;
+	public nint SetWaitingForPlayersRoster;
 }

@@ -30,7 +30,8 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<void*, byte*, void*> GameEventGetPlayerController => (delegate* unmanaged[Cdecl]<void*, byte*, void*>)_cb.GameEventGetPlayerController;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, void*> GameEventGetPlayerPawn => (delegate* unmanaged[Cdecl]<void*, byte*, void*>)_cb.GameEventGetPlayerPawn;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, uint> GameEventGetEHandle => (delegate* unmanaged[Cdecl]<void*, byte*, uint>)_cb.GameEventGetEHandle;
-	public static delegate* unmanaged[Cdecl]<int, byte*, int, ulong, void> SendNetMessage => (delegate* unmanaged[Cdecl]<int, byte*, int, ulong, void>)_cb.SendNetMessage;
+	/// <summary>Last parameter is NetChannelBufType_t: 0 = BUF_UNRELIABLE, 1 = BUF_RELIABLE.</summary>
+	public static delegate* unmanaged[Cdecl]<int, byte*, int, ulong, int, void> SendNetMessage => (delegate* unmanaged[Cdecl]<int, byte*, int, ulong, int, void>)_cb.SendNetMessage;
 	public static delegate* unmanaged[Cdecl]<int, byte*, void> ClientCommand => (delegate* unmanaged[Cdecl]<int, byte*, void>)_cb.ClientCommand;
 	public static delegate* unmanaged[Cdecl]<void*, void> RemoveEntity => (delegate* unmanaged[Cdecl]<void*, void>)_cb.RemoveEntity;
 	public static delegate* unmanaged[Cdecl]<void*, void*, byte, byte, byte, byte, void> SetPawn => (delegate* unmanaged[Cdecl]<void*, void*, byte, byte, byte, byte, void>)_cb.SetPawn;
@@ -48,6 +49,7 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<void*, byte*, double, void> KV3SetDouble => (delegate* unmanaged[Cdecl]<void*, byte*, double, void>)_cb.KV3SetDouble;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, float, float, float, void> KV3SetVector => (delegate* unmanaged[Cdecl]<void*, byte*, float, float, float, void>)_cb.KV3SetVector;
 	public static delegate* unmanaged[Cdecl]<int, void*> GetEntityByIndex => (delegate* unmanaged[Cdecl]<int, void*>)_cb.GetEntityByIndex;
+	public static delegate* unmanaged[Cdecl]<void*, byte*, void*> FindEntityByName => (delegate* unmanaged[Cdecl]<void*, byte*, void*>)_cb.FindEntityByName;
 	public static delegate* unmanaged[Cdecl]<void*, uint> GetEntityHandle => (delegate* unmanaged[Cdecl]<void*, uint>)_cb.GetEntityHandle;
 	public static delegate* unmanaged[Cdecl]<byte*, void*> CreateEntityByName => (delegate* unmanaged[Cdecl]<byte*, void*>)_cb.CreateEntityByName;
 	public static delegate* unmanaged[Cdecl]<void*, void*, void> QueueSpawnEntity => (delegate* unmanaged[Cdecl]<void*, void*, void>)_cb.QueueSpawnEntity;
@@ -69,15 +71,16 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<void*, void> FreeGameEvent => (delegate* unmanaged[Cdecl]<void*, void>)_cb.FreeGameEvent;
 	public static delegate* unmanaged[Cdecl]<void*, byte, void> ResetHero => (delegate* unmanaged[Cdecl]<void*, byte, void>)_cb.ResetHero;
 	public static delegate* unmanaged[Cdecl]<byte*, void*> GetHeroData => (delegate* unmanaged[Cdecl]<byte*, void*>)_cb.GetHeroData;
-	public static delegate* unmanaged[Cdecl]<void*, int, void> ChangeTeam => (delegate* unmanaged[Cdecl]<void*, int, void>)_cb.ChangeTeam;
+	public static delegate* unmanaged[Cdecl]<void*, int, byte, void> ChangeTeam => (delegate* unmanaged[Cdecl]<void*, int, byte, void>)_cb.ChangeTeam;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, void> SelectHero => (delegate* unmanaged[Cdecl]<void*, byte*, void>)_cb.SelectHero;
 	public static delegate* unmanaged[Cdecl]<void*, int> GetUtlVectorSize => (delegate* unmanaged[Cdecl]<void*, int>)_cb.GetUtlVectorSize;
 	public static delegate* unmanaged[Cdecl]<void*, void*> GetUtlVectorData => (delegate* unmanaged[Cdecl]<void*, void*>)_cb.GetUtlVectorData;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, byte> RemoveAbility => (delegate* unmanaged[Cdecl]<void*, byte*, byte>)_cb.RemoveAbility;
+	public static delegate* unmanaged[Cdecl]<void*, void*, byte> RemoveAbilityByEntity => (delegate* unmanaged[Cdecl]<void*, void*, byte>)_cb.RemoveAbilityByEntity;
+	public static delegate* unmanaged[Cdecl]<void*, byte*, void*> FindAbilityByName => (delegate* unmanaged[Cdecl]<void*, byte*, void*>)_cb.FindAbilityByName;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, ushort, void*> AddAbility => (delegate* unmanaged[Cdecl]<void*, byte*, ushort, void*>)_cb.AddAbility;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, int, void*> AddItem => (delegate* unmanaged[Cdecl]<void*, byte*, int, void*>)_cb.AddItem;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, byte, byte, byte> SellItem => (delegate* unmanaged[Cdecl]<void*, byte*, byte, byte, byte>)_cb.SellItem;
-	public static delegate* unmanaged[Cdecl]<void*, void*, void*, void*, float, int, void> HurtEntity => (delegate* unmanaged[Cdecl]<void*, void*, void*, void*, float, int, void>)_cb.HurtEntity;
 	public static delegate* unmanaged[Cdecl]<void*, void*, void*, float, int, void*> CreateDamageInfo => (delegate* unmanaged[Cdecl]<void*, void*, void*, float, int, void*>)_cb.CreateDamageInfo;
 	public static delegate* unmanaged[Cdecl]<void*, void> DestroyDamageInfo => (delegate* unmanaged[Cdecl]<void*, void>)_cb.DestroyDamageInfo;
 	public static delegate* unmanaged[Cdecl]<void*, void*, void> TakeDamage => (delegate* unmanaged[Cdecl]<void*, void*, void>)_cb.TakeDamage;
@@ -87,6 +90,7 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<byte*, byte*, byte*, ulong, ulong> CreateConVar => (delegate* unmanaged[Cdecl]<byte*, byte*, byte*, ulong, ulong>)_cb.CreateConVar;
 	public static delegate* unmanaged[Cdecl]<byte*, void> ExecuteServerCommand => (delegate* unmanaged[Cdecl]<byte*, void>)_cb.ExecuteServerCommand;
 	public static delegate* unmanaged[Cdecl]<void*, byte*, void> SetModel => (delegate* unmanaged[Cdecl]<void*, byte*, void>)_cb.SetModel;
+	public static delegate* unmanaged[Cdecl]<void*, byte*> GetModelName => (delegate* unmanaged[Cdecl]<void*, byte*>)_cb.GetModelName;
 	public static nint TraceShapeFn => _cb.TraceShapeFn;
 	public static void** PhysicsQueryPtr => (void**)_cb.PhysicsQueryPtr;
 	public static delegate* unmanaged[Cdecl]<ushort, ConVarInfoNative*, byte> GetConVarAt => (delegate* unmanaged[Cdecl]<ushort, ConVarInfoNative*, byte>)_cb.GetConVarAt;
@@ -98,6 +102,7 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<void*, byte, void> ToggleActivate => (delegate* unmanaged[Cdecl]<void*, byte, void>)_cb.ToggleActivate;
 	public static delegate* unmanaged[Cdecl]<void*, int> GetMaxHealth => (delegate* unmanaged[Cdecl]<void*, int>)_cb.GetMaxHealth;
 	public static delegate* unmanaged[Cdecl]<void*, float, int> Heal => (delegate* unmanaged[Cdecl]<void*, float, int>)_cb.Heal;
+	public static delegate* unmanaged[Cdecl]<void*, float, void> SetScale => (delegate* unmanaged[Cdecl]<void*, float, void>)_cb.SetScale;
 	public static delegate* unmanaged[Cdecl]<void*> GetGlobalVars => (delegate* unmanaged[Cdecl]<void*>)_cb.GetGlobalVars;
 	public static delegate* unmanaged[Cdecl]<nint, void> SetEngineLogCallback => (delegate* unmanaged[Cdecl]<nint, void>)_cb.SetEngineLogCallback;
 	public static delegate* unmanaged[Cdecl]<void*, int, void> SetUpgradeBits => (delegate* unmanaged[Cdecl]<void*, int, void>)_cb.SetUpgradeBits;
@@ -110,4 +115,28 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<void*, byte*, byte*, void> EKVSetStringToken => (delegate* unmanaged[Cdecl]<void*, byte*, byte*, void>)_cb.EKVSetStringToken;
 	public static delegate* unmanaged[Cdecl]<byte*, uint*, byte*> ResolveDesignerName => (delegate* unmanaged[Cdecl]<byte*, uint*, byte*>)_cb.ResolveDesignerName;
 	public static delegate* unmanaged[Cdecl]<int, uint, void*> LookupVDataByHash => (delegate* unmanaged[Cdecl]<int, uint, void*>)_cb.LookupVDataByHash;
+	public static delegate* unmanaged[Cdecl]<void*, void> SpawnObserverPawn => (delegate* unmanaged[Cdecl]<void*, void>)_cb.SpawnObserverPawn;
+	public static delegate* unmanaged[Cdecl]<void*, void*, byte> ObserverServicesSetTarget => (delegate* unmanaged[Cdecl]<void*, void*, byte>)_cb.ObserverServicesSetTarget;
+	public static delegate* unmanaged[Cdecl]<void*, int, void> ObserverServicesSetMode => (delegate* unmanaged[Cdecl]<void*, int, void>)_cb.ObserverServicesSetMode;
+	public static delegate* unmanaged[Cdecl]<uint> TakeSoundEventGuid => (delegate* unmanaged[Cdecl]<uint>)_cb.TakeSoundEventGuid;
+
+	// Variant accessors (used by EntityIOValue)
+	public static delegate* unmanaged[Cdecl]<void*, byte> VariantGetType => (delegate* unmanaged[Cdecl]<void*, byte>)_cb.VariantGetType;
+	public static delegate* unmanaged[Cdecl]<void*, byte*> VariantToCString => (delegate* unmanaged[Cdecl]<void*, byte*>)_cb.VariantToCString;
+	public static delegate* unmanaged[Cdecl]<void*, long> VariantToInt64 => (delegate* unmanaged[Cdecl]<void*, long>)_cb.VariantToInt64;
+	public static delegate* unmanaged[Cdecl]<void*, double> VariantToFloat64 => (delegate* unmanaged[Cdecl]<void*, double>)_cb.VariantToFloat64;
+	public static delegate* unmanaged[Cdecl]<void*, byte> VariantToBool => (delegate* unmanaged[Cdecl]<void*, byte>)_cb.VariantToBool;
+	public static delegate* unmanaged[Cdecl]<void*, uint> VariantToEHandle => (delegate* unmanaged[Cdecl]<void*, uint>)_cb.VariantToEHandle;
+	public static delegate* unmanaged[Cdecl]<void*, float*, void> VariantToVector => (delegate* unmanaged[Cdecl]<void*, float*, void>)_cb.VariantToVector;
+	public static delegate* unmanaged[Cdecl]<void*, uint> VariantToColor => (delegate* unmanaged[Cdecl]<void*, uint>)_cb.VariantToColor;
+	public static delegate* unmanaged[Cdecl]<byte*, ulong, byte> AddConCommandFlags => (delegate* unmanaged[Cdecl]<byte*, ulong, byte>)_cb.AddConCommandFlags;
+
+	// Item imbuement
+	public static delegate* unmanaged[Cdecl]<byte*, int> GetItemImbueEffects => (delegate* unmanaged[Cdecl]<byte*, int>)_cb.GetItemImbueEffects;
+	public static delegate* unmanaged[Cdecl]<void*, byte*, byte> CanImbueAbility => (delegate* unmanaged[Cdecl]<void*, byte*, byte>)_cb.CanImbueAbility;
+	public static delegate* unmanaged[Cdecl]<void*, void*, byte> ImbueAbility => (delegate* unmanaged[Cdecl]<void*, void*, byte>)_cb.ImbueAbility;
+
+	// Game state
+	public static delegate* unmanaged[Cdecl]<void*, int, void> ChangeGameState => (delegate* unmanaged[Cdecl]<void*, int, void>)_cb.ChangeGameState;
+	public static delegate* unmanaged[Cdecl]<uint, uint, void> SetWaitingForPlayersRoster => (delegate* unmanaged[Cdecl]<uint, uint, void>)_cb.SetWaitingForPlayersRoster;
 }

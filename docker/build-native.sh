@@ -146,7 +146,6 @@ for f in \
     ${SRC}/Core/Hooks/CCitadelPlayerController.cpp \
     ${SRC}/Core/Hooks/GameEvents.cpp \
     ${SRC}/Core/Hooks/CServerSideClientBase.cpp \
-    ${SRC}/Core/Hooks/SendNetMessage.cpp \
     ${SRC}/Core/Hooks/ReplyConnection.cpp \
     ${SRC}/Core/Hooks/PostEventAbstract.cpp \
     ${SRC}/Core/Hooks/NetworkServerService.cpp \
@@ -159,6 +158,10 @@ for f in \
     ${SRC}/Core/Hooks/AddModifier.cpp \
     ${SRC}/Core/Hooks/BuildGameSessionManifest.cpp \
     ${SRC}/Core/Hooks/CheckTransmit.cpp \
+    ${SRC}/Core/Hooks/InitializeHeroOnPawn.cpp \
+    ${SRC}/Core/Hooks/FireModifierEvent.cpp \
+    ${SRC}/Core/Hooks/ChangeGameState.cpp \
+    ${SRC}/Core/Hooks/AreAllLobbyPlayersConnected.cpp \
     ${SRC}/Core/A2SPatch.cpp \
     ${SRC}/Core/Deadworks.cpp \
     ${SRC}/Core/NativeCallbacks.cpp \

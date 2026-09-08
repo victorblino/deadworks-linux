@@ -1,12 +1,9 @@
+using System.Collections;
+
 namespace DeadworksManaged.Api;
 
-/// <summary>Internal interface for entity-keyed data stores, allowing cleanup on entity deletion.</summary>
-public interface IEntityData {
-	void Remove(uint handle);
-}
-
 /// <summary>Dictionary-like store that associates arbitrary per-entity data with entities by their handle. Automatically removes entries when an entity is deleted.</summary>
-public sealed class EntityData<T> : IEntityData {
+public sealed class EntityData<T> : IEntityData, IEnumerable<KeyValuePair<CBaseEntity, T>> {
 	private readonly Dictionary<uint, T> _data = new();
 
 	static EntityData() { }
@@ -14,6 +11,9 @@ public sealed class EntityData<T> : IEntityData {
 	public EntityData() {
 		EntityDataRegistry.Register(this);
 	}
+
+	/// <summary>Number of entity→value entries currently stored.</summary>
+	public int Count => _data.Count;
 
 	public T? this[CBaseEntity entity] {
 		get => TryGet(entity, out var val) ? val : default;
@@ -52,24 +52,12 @@ public sealed class EntityData<T> : IEntityData {
 	void IEntityData.Remove(uint handle) => _data.Remove(handle);
 
 	public void Clear() => _data.Clear();
-}
 
-/// <summary>Global registry of all active <see cref="EntityData{T}"/> stores. Notifies them when an entity is deleted to purge stale entries.</summary>
-public static class EntityDataRegistry {
-	private static readonly List<WeakReference<IEntityData>> _stores = new();
-
-	internal static void Register(IEntityData store) {
-		lock (_stores) _stores.Add(new WeakReference<IEntityData>(store));
+	/// <summary>Enumerates stored entries as (entity, value) pairs. Do not add/remove entries while iterating.</summary>
+	public IEnumerator<KeyValuePair<CBaseEntity, T>> GetEnumerator() {
+		foreach (var kvp in _data)
+			yield return new KeyValuePair<CBaseEntity, T>(new CBaseEntity(kvp.Key), kvp.Value);
 	}
 
-	internal static void OnEntityDeleted(uint handle) {
-		lock (_stores) {
-			for (int i = _stores.Count - 1; i >= 0; i--) {
-				if (_stores[i].TryGetTarget(out var store))
-					store.Remove(handle);
-				else
-					_stores.RemoveAt(i);
-			}
-		}
-	}
+	IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 }

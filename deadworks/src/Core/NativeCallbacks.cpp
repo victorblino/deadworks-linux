@@ -10,15 +10,20 @@
 #include "Hooks/GameEvents.hpp"
 #include "Hooks/PostEventAbstract.hpp"
 #include "Hooks/BuildGameSessionManifest.hpp"
+#include "Hooks/ChangeGameState.hpp"
+#include "Hooks/AreAllLobbyPlayersConnected.hpp"
 
-#include "Hooks/TraceShape.hpp" // for g_pPhysicsQuery
+#include "Hooks/TraceShape.hpp"
 #include "../Memory/MemoryDataLoader.hpp"
+#include "../Lib/Virtual.hpp"
+#include <interfaces/interfaces.h>
 #include "../SDK/CBaseEntity.hpp"
 #include "../SDK/CCitadelPlayerController.hpp"
 #include "../SDK/CEntitySystem.hpp"
 #include "../SDK/Core.hpp"
 #include "../SDK/Util.hpp"
 
+#include <cstring>
 #include <tier1/convar.h>
 #include <igameevents.h>
 #include <igameeventsystem.h>
@@ -170,6 +175,29 @@ static void *__cdecl NativeGetEntityFromHandle(uint32_t handle) {
 
 static void *__cdecl NativeGetEntityByIndex(int32_t index) {
     return GameEntitySystem()->GetEntityInstance(CEntityIndex(index));
+}
+
+// Walks m_pFirstActiveEntity -> m_pNext, returning the next match after pStart
+// (pStart == nullptr starts from the head).
+static void *__cdecl NativeFindEntityByName(void *pStart, const char *name) {
+    if (!name) return nullptr;
+    auto *system = GameEntitySystem();
+    if (!system) return nullptr;
+
+    CEntityIdentity *ident;
+    if (pStart) {
+        auto *prev = static_cast<CEntityInstance *>(pStart)->m_pEntity;
+        ident = prev ? prev->m_pNext : nullptr;
+    } else {
+        ident = system->m_EntityList.m_pFirstActiveEntity;
+    }
+
+    for (; ident; ident = ident->m_pNext) {
+        const char *entName = ident->GetName();
+        if (entName && strcmp(entName, name) == 0)
+            return ident->m_pInstance;
+    }
+    return nullptr;
 }
 
 static uint32_t __cdecl NativeGetEntityHandle(void *entity) {
@@ -400,6 +428,17 @@ static void __cdecl NativeSetModel(void *entity, const char *modelName) {
     fn(entity, modelName);
 }
 
+static const char *__cdecl NativeGetModelName(void *entity) {
+    if (!entity)
+        return nullptr;
+    using GetModelNameFn = void(__thiscall *)(void *, const char **);
+    static const auto fn = reinterpret_cast<GetModelNameFn>(
+        MemoryDataLoader::Get().GetOffset("CBaseModelEntity::GetModelName").value());
+    const char *out = nullptr;
+    fn(entity, &out);
+    return out;
+}
+
 static void __cdecl NativeRemoveEntity(void *entity) {
     if (!entity)
         return;
@@ -410,6 +449,29 @@ static void __cdecl NativeSetPawn(void *controller, void *pawn, uint8_t bRetainO
     if (!controller)
         return;
     static_cast<CBasePlayerController *>(controller)->SetPawn(static_cast<CBasePlayerPawn *>(pawn), bRetainOldPawnTeam != 0, bCopyMovementState != 0, bAllowTeamMismatch != 0, bPreserveMovementState != 0);
+}
+
+static void __cdecl NativeSpawnObserverPawn(void *controller) {
+    if (!controller)
+        return;
+    using SpawnObserverPawnFn = void *(__thiscall *)(void *);
+    static const auto fn = reinterpret_cast<SpawnObserverPawnFn>(
+        MemoryDataLoader::Get().GetOffset("CCitadelPlayerController::SpawnObserverPawn").value());
+    fn(controller);
+}
+
+static uint8_t __cdecl NativeObserverServicesSetTarget(void *observerServices, void *target) {
+    if (!observerServices)
+        return 0;
+    auto idx = MemoryDataLoader::Get().GetVirtual("CPlayer_ObserverServices::SetObserverTarget").value();
+    return CallVirtual<uint8_t>(observerServices, static_cast<uint32_t>(idx), target);
+}
+
+static void __cdecl NativeObserverServicesSetMode(void *observerServices, int32_t mode) {
+    if (!observerServices)
+        return;
+    auto idx = MemoryDataLoader::Get().GetVirtual("CPlayer_ObserverServices::SetObserverMode").value();
+    CallVirtual<void>(observerServices, static_cast<uint32_t>(idx), mode);
 }
 
 // --- KV3 ---
@@ -481,22 +543,15 @@ static LookupVDataByHashFn g_LookupVDataByHash = nullptr;
 static void ResolveSubclassStatics() {
     auto &mem = deadworks::MemoryDataLoader::Get();
 
-    auto lookupOpt = mem.GetOffset("SubclassRegistry::Lookup");
-    if (lookupOpt)
-        g_SubclassLookup = reinterpret_cast<SubclassLookupFn>(lookupOpt.value());
+    g_SubclassLookup = reinterpret_cast<SubclassLookupFn>(
+        mem.GetOffset("SubclassRegistry::Lookup").value());
 
-    auto refOpt = mem.GetOffset("SubclassRegistry::GlobalRef");
-    if (refOpt) {
-        auto match = refOpt.value();
-        // 48 8B 0D [disp32] = mov rcx, [rip+disp]
-        // Store pointer TO the global, deref lazily (null during early init)
-        auto disp = *reinterpret_cast<int32_t *>(match + 3);
-        g_ppSubclassRegistry = reinterpret_cast<void **>(match + 7 + disp);
-    }
+    auto refMatch = mem.GetOffset("SubclassRegistry::GlobalRef").value();
+    auto disp = *reinterpret_cast<int32_t *>(refMatch + 3);
+    g_ppSubclassRegistry = reinterpret_cast<void **>(refMatch + 7 + disp);
 
-    auto vdataOpt = mem.GetOffset("LookupVDataByHash");
-    if (vdataOpt)
-        g_LookupVDataByHash = reinterpret_cast<LookupVDataByHashFn>(vdataOpt.value());
+    g_LookupVDataByHash = reinterpret_cast<LookupVDataByHashFn>(
+        mem.GetOffset("LookupVDataByHash").value());
 }
 
 static void *__cdecl NativeLookupVDataByHash(int32_t typeFilter, uint32_t hash) {
@@ -664,7 +719,8 @@ static uint8_t __cdecl NativeAddFileSystemSearchPath(const char *path, const cha
 
 // --- Networking ---
 
-static void __cdecl NativeSendNetMessage(int msgId, const uint8_t *protoBytes, int protoLen, uint64_t recipientMask) {
+static void __cdecl NativeSendNetMessage(int msgId, const uint8_t *protoBytes, int protoLen, uint64_t recipientMask,
+                                         int bufType) {
     if (!g_pNetworkMessages || !protoBytes || protoLen <= 0)
         return;
 
@@ -678,7 +734,7 @@ static void __cdecl NativeSendNetMessage(int msgId, const uint8_t *protoBytes, i
 
     auto *pbMsg = const_cast<google::protobuf::Message *>(msg->AsMessage());
     if (pbMsg && pbMsg->ParseFromArray(protoBytes, protoLen)) {
-        CRecipientFilter filter;
+        CRecipientFilter filter(bufType == static_cast<int>(BUF_UNRELIABLE) ? BUF_UNRELIABLE : BUF_RELIABLE);
         for (int i = 0; i < ABSOLUTE_PLAYER_LIMIT; ++i) {
             if (recipientMask & (1ULL << i))
                 filter.AddRecipient(CPlayerSlot(i));
@@ -831,6 +887,32 @@ static uint8_t __cdecl NativeGetConCommandAt(uint16_t index, ConCommandInfoResul
     return 1;
 }
 
+// OR-in `flags` on the registered ConCommand named `name`. Returns 1 on success,
+// 0 if the command isn't registered. Used to retrofit FCVAR_CHEAT onto commands
+// that ship without it.
+static uint8_t __cdecl NativeAddConCommandFlags(const char *name, uint64_t flags) {
+    if (!name || !g_pCVar)
+        return 0;
+    ConCommandRef cmd(name);
+    if (!cmd.IsValidRef())
+        return 0;
+    cmd.AddFlags(flags);
+    return 1;
+}
+
+static void __cdecl NativeChangeGameState(void *gameRules, int32_t newState) {
+    if (!gameRules)
+        return;
+    // Bypasses the veto in Hook_ChangeGameState: a plugin driving the transition itself has
+    // already decided. OnGameStateChanged still fires for everyone.
+    hooks::ChangeGameState(gameRules, newState);
+}
+
+static void __cdecl NativeSetWaitingForPlayersRoster(uint32_t readyCount, uint32_t totalCount) {
+    hooks::g_LobbyPlayersConnectedOverride = readyCount;
+    hooks::g_LobbyPlayersTotalOverride = totalCount;
+}
+
 // ---------------------------------------------------------------------------
 // Entity virtual function wrappers
 // ---------------------------------------------------------------------------
@@ -847,6 +929,12 @@ static int32_t __cdecl NativeHeal(void *entity, float amount) {
     return GetVFunc<int(__thiscall *)(void *, float)>(entity, offsets::kVtblHeal)(entity, amount);
 }
 
+static void __cdecl NativeSetScale(void *entity, float scale) {
+    if (!entity)
+        return;
+    GetVFunc<void(__thiscall *)(void *, float)>(entity, offsets::kVtblSetScale)(entity, scale);
+}
+
 static void *__cdecl NativeGetGlobalVars() {
     if (!g_pEngineServer)
         return nullptr;
@@ -855,6 +943,97 @@ static void *__cdecl NativeGetGlobalVars() {
 
 static uint8_t __cdecl NativeHasCommandLineParm(const char *parm) {
     return CommandLine()->HasParm(CUtlStringToken(parm, static_cast<int>(strlen(parm)))) ? 1 : 0;
+}
+
+// --- Variant accessors (for EntityIOValue) ---
+
+static uint8_t __cdecl NativeVariantGetType(const void *variantPtr) {
+    if (!variantPtr) return 0; // FIELD_VOID
+    return static_cast<uint8_t>(static_cast<const variant_t *>(variantPtr)->FieldType());
+}
+
+static const char *__cdecl NativeVariantToCString(const void *variantPtr) {
+    if (!variantPtr) return "";
+    return static_cast<const variant_t *>(variantPtr)->ToString();
+}
+
+static int64_t __cdecl NativeVariantToInt64(const void *variantPtr) {
+    if (!variantPtr) return 0;
+    int64_t out = 0;
+    static_cast<const variant_t *>(variantPtr)->AssignTo(&out);
+    return out;
+}
+
+static double __cdecl NativeVariantToFloat64(const void *variantPtr) {
+    if (!variantPtr) return 0.0;
+    double out = 0.0;
+    static_cast<const variant_t *>(variantPtr)->AssignTo(&out);
+    return out;
+}
+
+static uint8_t __cdecl NativeVariantToBool(const void *variantPtr) {
+    if (!variantPtr) return 0;
+    bool out = false;
+    static_cast<const variant_t *>(variantPtr)->AssignTo(&out);
+    return out ? 1 : 0;
+}
+
+static uint32_t __cdecl NativeVariantToEHandle(const void *variantPtr) {
+    if (!variantPtr) return 0xFFFFFFFFu;
+    CEntityHandle out;
+    if (static_cast<const variant_t *>(variantPtr)->AssignTo(&out))
+        return static_cast<uint32_t>(out.ToInt());
+    return 0xFFFFFFFFu;
+}
+
+static void __cdecl NativeVariantToVector(const void *variantPtr, float *outXYZW) {
+    if (!outXYZW) return;
+    outXYZW[0] = outXYZW[1] = outXYZW[2] = outXYZW[3] = 0.0f;
+    if (!variantPtr) return;
+
+    const variant_t *v = static_cast<const variant_t *>(variantPtr);
+    switch (v->FieldType()) {
+        case FIELD_VECTOR:
+        case FIELD_QANGLE: {
+            Vector vec(0, 0, 0);
+            if (v->AssignTo(&vec)) { outXYZW[0] = vec.x; outXYZW[1] = vec.y; outXYZW[2] = vec.z; }
+            break;
+        }
+        case FIELD_VECTOR2D: {
+            Vector2D vec(0, 0);
+            if (v->AssignTo(&vec)) { outXYZW[0] = vec.x; outXYZW[1] = vec.y; }
+            break;
+        }
+        case FIELD_VECTOR4D:
+        case FIELD_QUATERNION: {
+            Vector4D vec(0, 0, 0, 0);
+            if (v->AssignTo(&vec)) { outXYZW[0] = vec.x; outXYZW[1] = vec.y; outXYZW[2] = vec.z; outXYZW[3] = vec.w; }
+            break;
+        }
+        default: break;
+    }
+}
+
+static uint32_t __cdecl NativeVariantToColor(const void *variantPtr) {
+    if (!variantPtr) return 0;
+    Color out(0, 0, 0, 0);
+    if (static_cast<const variant_t *>(variantPtr)->AssignTo(&out)) {
+        return static_cast<uint32_t>(out.r()) |
+               (static_cast<uint32_t>(out.g()) << 8) |
+               (static_cast<uint32_t>(out.b()) << 16) |
+               (static_cast<uint32_t>(out.a()) << 24);
+    }
+    return 0;
+}
+
+static uint32_t __cdecl NativeTakeSoundEventGuid() {
+    if (!g_pSoundSystem)
+        return 0;
+
+    auto idx = MemoryDataLoader::Get().GetVirtual("CSoundSystem::TakeGuid").value();
+    uint32_t guid = 0;
+    CallVirtual<void>(g_pSoundSystem, static_cast<uint32_t>(idx), &guid);
+    return guid;
 }
 
 // ---------------------------------------------------------------------------
@@ -896,6 +1075,7 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
     callbacks.GetEntityClassname = &NativeGetEntityClassname;
     callbacks.GetEntityFromHandle = &NativeGetEntityFromHandle;
     callbacks.GetEntityByIndex = &NativeGetEntityByIndex;
+    callbacks.FindEntityByName = &NativeFindEntityByName;
     callbacks.GetEntityHandle = &NativeGetEntityHandle;
     callbacks.CreateEntityByName = &NativeCreateEntityByName;
     callbacks.QueueSpawnEntity = &NativeQueueSpawnEntity;
@@ -965,10 +1145,10 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
 
     // SetModel
     callbacks.SetModel = &NativeSetModel;
+    callbacks.GetModelName = &NativeGetModelName;
 
-    // Pass raw TraceShape function pointer and physics query pointer to C#
-    auto traceShapeOpt = MemoryDataLoader::Get().GetOffset("TraceShape");
-    callbacks.TraceShapeFn = traceShapeOpt ? reinterpret_cast<void *>(traceShapeOpt.value()) : nullptr;
+    callbacks.TraceShapeFn = reinterpret_cast<void *>(
+        MemoryDataLoader::Get().GetOffset("TraceShape").value());
     callbacks.PhysicsQueryPtr = &g_pPhysicsQuery;
 
     // CVar / ConCommand index-based access
@@ -978,6 +1158,7 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
     // Entity virtual function wrappers
     callbacks.GetMaxHealth = &NativeGetMaxHealth;
     callbacks.Heal = &NativeHeal;
+    callbacks.SetScale = &NativeSetScale;
 
     // Global vars
     callbacks.GetGlobalVars = &NativeGetGlobalVars;
@@ -998,4 +1179,29 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
     // Subclass resolution
     callbacks.ResolveDesignerName = &NativeResolveDesignerName;
     callbacks.LookupVDataByHash = &NativeLookupVDataByHash;
+
+    // Observer/spectate
+    callbacks.SpawnObserverPawn = &NativeSpawnObserverPawn;
+    callbacks.ObserverServicesSetTarget = &NativeObserverServicesSetTarget;
+    callbacks.ObserverServicesSetMode = &NativeObserverServicesSetMode;
+
+    // Sound events
+    callbacks.TakeSoundEventGuid = &NativeTakeSoundEventGuid;
+
+    // Variant accessors (for entity I/O hooks)
+    callbacks.VariantGetType = &NativeVariantGetType;
+    callbacks.VariantToCString = &NativeVariantToCString;
+    callbacks.VariantToInt64 = &NativeVariantToInt64;
+    callbacks.VariantToFloat64 = &NativeVariantToFloat64;
+    callbacks.VariantToBool = &NativeVariantToBool;
+    callbacks.VariantToEHandle = &NativeVariantToEHandle;
+    callbacks.VariantToVector = &NativeVariantToVector;
+    callbacks.VariantToColor = &NativeVariantToColor;
+
+    // ConCommand flag mutation
+    callbacks.AddConCommandFlags = &NativeAddConCommandFlags;
+
+    // Game state
+    callbacks.ChangeGameState = &NativeChangeGameState;
+    callbacks.SetWaitingForPlayersRoster = &NativeSetWaitingForPlayersRoster;
 }

@@ -39,7 +39,12 @@ struct NativeCallbacks {
     void *(__cdecl *GameEventGetPlayerController)(void *event, const char *key);
     void *(__cdecl *GameEventGetPlayerPawn)(void *event, const char *key);
     uint32_t(__cdecl *GameEventGetEHandle)(void *event, const char *key);
-    void(__cdecl *SendNetMessage)(int msgId, const uint8_t *protoBytes, int protoLen, uint64_t recipientMask);
+    // bufType is NetChannelBufType_t: BUF_UNRELIABLE = 0, BUF_RELIABLE = 1.
+    // Unreliable costs nothing on overflow (the packet is simply dropped),
+    // whereas overflowing the reliable stream disconnects the client with
+    // NETWORK_DISCONNECT_RELIABLEOVERFLOW — so best-effort traffic should not
+    // be sent reliably just because it is convenient.
+    void(__cdecl *SendNetMessage)(int msgId, const uint8_t *protoBytes, int protoLen, uint64_t recipientMask, int bufType);
     void(__cdecl *ClientCommand)(int slot, const char *command);
     void(__cdecl *RemoveEntity)(void *entity);
     void(__cdecl *SetPawn)(void *controller, void *pawn, uint8_t bRetainOldPawnTeam, uint8_t bCopyMovementState, uint8_t bAllowTeamMismatch, uint8_t bPreserveMovementState);
@@ -58,6 +63,7 @@ struct NativeCallbacks {
     void(__cdecl *KV3SetDouble)(void *kv3, const char *key, double value);
     void(__cdecl *KV3SetVector)(void *kv3, const char *key, float x, float y, float z);
     void *(__cdecl *GetEntityByIndex)(int32_t index);
+    void *(__cdecl *FindEntityByName)(void *pStart, const char *name);
     uint32_t(__cdecl *GetEntityHandle)(void *entity);
     void *(__cdecl *CreateEntityByName)(const char *className);
     void(__cdecl *QueueSpawnEntity)(void *entity, void *ekv);
@@ -79,15 +85,16 @@ struct NativeCallbacks {
     void(__cdecl *FreeGameEvent)(void *event);
     void(__cdecl *ResetHero)(void *pawn, uint8_t bReset);
     void *(__cdecl *GetHeroData)(const char *heroName);
-    void(__cdecl *ChangeTeam)(void *controller, int32_t teamNum);
+    void(__cdecl *ChangeTeam)(void *controller, int32_t teamNum, uint8_t bKeepHero);
     void(__cdecl *SelectHero)(void *controller, const char *heroName);
     int32_t(__cdecl *GetUtlVectorSize)(void *vec);
     void *(__cdecl *GetUtlVectorData)(void *vec);
     uint8_t(__cdecl *RemoveAbility)(void *pawn, const char *abilityName);
+    uint8_t(__cdecl *RemoveAbilityByEntity)(void *pawn, void *ability);
+    void *(__cdecl *FindAbilityByName)(void *abilityComponent, const char *abilityName);
     void *(__cdecl *AddAbility)(void *pawn, const char *abilityName, uint16_t slot);
     void *(__cdecl *AddItem)(void *pawn, const char *itemName, int32_t upgradeTier);
     uint8_t(__cdecl *SellItem)(void *pawn, const char *itemName, uint8_t bFullRefund, uint8_t bForceSellPrice);
-    void(__cdecl *HurtEntity)(void *victim, void *attacker, void *inflictor, void *ability, float damage, int32_t damageType);
     void *(__cdecl *CreateDamageInfo)(void *inflictor, void *attacker, void *ability, float damage, int32_t damageType);
     void(__cdecl *DestroyDamageInfo)(void *info);
     void(__cdecl *TakeDamage)(void *victim, void *info);
@@ -97,6 +104,7 @@ struct NativeCallbacks {
     uint64_t(__cdecl *CreateConVar)(const char *name, const char *defaultValue, const char *description, uint64_t flags);
     void(__cdecl *ExecuteServerCommand)(const char *command);
     void(__cdecl *SetModel)(void *entity, const char *modelName);
+    const char *(__cdecl *GetModelName)(void *entity);
     void *TraceShapeFn;   // Raw function pointer to TraceShape (called directly from C#)
     void **PhysicsQueryPtr; // Pointer to g_pPhysicsQuery (C# dereferences to get current value)
     uint8_t(__cdecl *GetConVarAt)(uint16_t index, void *result);      // ConVarInfoResult*
@@ -108,6 +116,7 @@ struct NativeCallbacks {
     void(__cdecl *ToggleActivate)(void *ability, uint8_t activate);
     int32_t(__cdecl *GetMaxHealth)(void *entity);
     int32_t(__cdecl *Heal)(void *entity, float amount);
+    void(__cdecl *SetScale)(void *entity, float scale);
     void *(__cdecl *GetGlobalVars)();
     void(__cdecl *SetEngineLogCallback)(void(__cdecl *callback)(const char *message));
     void(__cdecl *SetUpgradeBits)(void *ability, int32_t newBits);
@@ -120,6 +129,27 @@ struct NativeCallbacks {
     void(__cdecl *EKVSetStringToken)(void *ekv, const char *key, const char *tokenString);
     const char *(__cdecl *ResolveDesignerName)(const char *designerName, uint32_t *outSubclassId);
     void *(__cdecl *LookupVDataByHash)(int32_t typeFilter, uint32_t hash);
+    void(__cdecl *SpawnObserverPawn)(void *controller);
+    uint8_t(__cdecl *ObserverServicesSetTarget)(void *observerServices, void *target);
+    void(__cdecl *ObserverServicesSetMode)(void *observerServices, int32_t mode);
+    uint32_t(__cdecl *TakeSoundEventGuid)();
+    // Variant accessors — used by EntityIOValue for entity I/O hooks.
+    uint8_t(__cdecl *VariantGetType)(const void *variantPtr);
+    const char *(__cdecl *VariantToCString)(const void *variantPtr);
+    int64_t(__cdecl *VariantToInt64)(const void *variantPtr);
+    double(__cdecl *VariantToFloat64)(const void *variantPtr);
+    uint8_t(__cdecl *VariantToBool)(const void *variantPtr);
+    uint32_t(__cdecl *VariantToEHandle)(const void *variantPtr);
+    void(__cdecl *VariantToVector)(const void *variantPtr, float *outXYZW);  // populates 4 floats; zero-pads unused components
+    uint32_t(__cdecl *VariantToColor)(const void *variantPtr);  // packed RGBA (R in low byte)
+    uint8_t(__cdecl *AddConCommandFlags)(const char *name, uint64_t flags);
+    // Item imbuement — see the "Item imbuement" block in NativeAbility.cpp.
+    int32_t(__cdecl *GetItemImbueEffects)(const char *itemName);
+    uint8_t(__cdecl *CanImbueAbility)(void *targetAbility, const char *itemName);
+    uint8_t(__cdecl *ImbueAbility)(void *item, void *targetAbility);
+    // Game state — see Hooks/ChangeGameState.hpp and Hooks/AreAllLobbyPlayersConnected.hpp.
+    void(__cdecl *ChangeGameState)(void *gameRules, int32_t newState);
+    void(__cdecl *SetWaitingForPlayersRoster)(uint32_t readyCount, uint32_t totalCount);
 };
 
 void PopulateNativeCallbacks(NativeCallbacks &callbacks);

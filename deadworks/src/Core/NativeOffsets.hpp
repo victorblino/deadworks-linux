@@ -19,6 +19,7 @@ constexpr int kVtblTeleport = 163;
 // CBaseEntity
 constexpr int kVtblHeal = 123;
 constexpr int kVtblGetMaxHealth = 181;
+constexpr int kVtblSetScale = 246;
 
 // CBaseModifier
 constexpr int kVtblModifierDestroy = 22;
@@ -30,8 +31,16 @@ constexpr int kVtblChangeTeam = 103;
 constexpr uintptr_t kOnAbilityRemoved_FindSlotCall = 0x7D;
 constexpr uintptr_t kOnAbilityRemoved_RemoveSlotCall = 0x8D;
 
-// CCitadelPlayerPawn::SelectHeroInternal
-constexpr uintptr_t kSelectHero_GetManagerCall = 0x15;
+// CCitadelPlayerController::ChangeTeamKeepHero
+// The bool has no schema entry, so read its offset from the disp32 in the
+// wrapper's first store: C6 81 <disp32> 00
+constexpr uintptr_t kChangeTeamKeepHero_FlagDisp = 0xE;
+constexpr int32_t kMaxPlayerControllerSize = 0x2000;
+
+// CHeroDefinitionManager::GetManagerAnchor
+// The manager getter is a generic TLS-guarded singleton stub that cannot be
+// signatured directly, so it is resolved from the E8 call inside this anchor.
+constexpr uintptr_t kHeroDefMgrAnchor_GetManagerCall = 0xE;
 
 // CCitadelGameRules::BuildGameSessionManifest
 constexpr uintptr_t kBGSM_GetHeroTableCall = 0x2BB;

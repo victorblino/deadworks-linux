@@ -13,15 +13,18 @@
 #include "Hooks/PostEventAbstract.hpp"
 #include "Hooks/CCitadelPlayerPawn.hpp"
 #include "Hooks/BuildGameSessionManifest.hpp"
+#include "Hooks/ChangeGameState.hpp"
+#include "Hooks/AreAllLobbyPlayersConnected.hpp"
 #include "Hooks/CCitadelPlayerController.hpp"
 #include "Hooks/EntityIO.hpp"
 #include "Hooks/TraceShape.hpp"
 #include "Hooks/ProcessUsercmds.hpp"
 #include "Hooks/AbilityThink.hpp"
 #include "Hooks/AddModifier.hpp"
-#include "Hooks/SendNetMessage.hpp"
 #include "Hooks/ReplyConnection.hpp"
 #include "Hooks/CheckTransmit.hpp"
+#include "Hooks/InitializeHeroOnPawn.hpp"
+#include "Hooks/FireModifierEvent.hpp"
 #include "A2SPatch.hpp"
 
 #include "../Memory/MemoryDataLoader.hpp"
@@ -42,6 +45,8 @@
 #include <icvar.h>
 #include <entity2/entitysystem.h>
 #include <iservernetworkable.h>
+#include <interfaces/interfaces.h>
+#include <soundsystem/isoundsystem.h>
 
 IGameEventSystem *g_pGameEventSystem = nullptr;
 
@@ -57,18 +62,10 @@ public:
 static CEntityListener g_EntityListener;
 
 template <typename Fn>
-static bool HookInline(safetyhook::InlineHook &hook, const char *name, Fn detour, bool required = false) {
-    auto opt = MemoryDataLoader::Get().GetOffset(name);
-    if (!opt) {
-        if (required)
-            g_Log->Error("{} signature not found", name);
-        else
-            g_Log->Warning("{} signature not found - hook unavailable", name);
-        return false;
-    }
-    hook = safetyhook::create_inline(opt.value(), detour);
+static void HookInline(safetyhook::InlineHook &hook, const char *name, Fn detour) {
+    auto offset = MemoryDataLoader::Get().GetOffset(name).value();
+    hook = safetyhook::create_inline(offset, detour);
     g_Log->Info("Hooked {}", name);
-    return true;
 }
 
 void Deadworks::InitFromAppSystem(CAppSystemDict *pAppSystem) {
@@ -108,6 +105,12 @@ void Deadworks::PostInit() {
     g_pGameEventSystem = reinterpret_cast<IGameEventSystem *>(InterfaceFactories.engine2(GAMEEVENTSYSTEM_INTERFACE_VERSION, nullptr));
     g_pCVar = reinterpret_cast<ICvar *>(InterfaceFactories.tier0(CVAR_INTERFACE_VERSION, nullptr));
     g_pFullFileSystem = reinterpret_cast<IFileSystem *>(InterfaceFactories.filesystem_stdio(FILESYSTEM_INTERFACE_VERSION, nullptr));
+    g_pSoundSystem = reinterpret_cast<ISoundSystem *>(InterfaceFactories.soundsystem(SOUNDSYSTEM_INTERFACE_VERSION, nullptr));
+
+    if (!g_pSoundSystem) {
+		g_Log->Error("Failed to load ISoundSystem. Abandoning ship!");
+		return;
+    }
 
     if (!g_pSource2Server) {
         g_Log->Error("Failed to load ISource2Server. Abandoning ship!");
@@ -151,10 +154,9 @@ void Deadworks::PostInit() {
 
     ConVar_Register(FCVAR_RELEASE | FCVAR_CLIENT_CAN_EXECUTE | FCVAR_GAMEDLL);
 
-    // Required inline hooks
     HookInline(hooks::g_CGCClientSystem_OnServerVersionCheck,
                "CGCClientSystem::OnServerVersionCheck",
-               &hooks::Hook_CGCClientSystem_OnServerVersionCheck, true);
+               &hooks::Hook_CGCClientSystem_OnServerVersionCheck);
 
     // VMT hooks - these use virtual indices, not signatures
     auto &mem = MemoryDataLoader::Get();
@@ -171,25 +173,24 @@ void Deadworks::PostInit() {
     hooks::g_NetworkServerServiceVmt = safetyhook::create_vmt(g_pNetworkServerService);
     hooks::g_NetworkServerService_StartupServer = safetyhook::create_vm(hooks::g_NetworkServerServiceVmt, mem.GetVirtual("INetworkServerService::StartupServer").value(), &hooks::NetworkServerServiceHook::Hook_StartupServer);
 
-    // Required inline hooks (crash if signature not found)
     HookInline(hooks::g_CServerSideClientBase_FilterMessage,
                "CServerSideClientBase::FilterMessage",
-               &hooks::Hook_CServerSideClientBase_FilterMessage, true);
-    HookInline(hooks::g_CServerSideClient_SendNetMessage,
-               "CServerSideClient::SendNetMessage",
-               &hooks::Hook_CServerSideClient_SendNetMessage, true);
+               &hooks::Hook_CServerSideClientBase_FilterMessage);
+    HookInline(hooks::g_CServerSideClientBase_IsReservedSlot,
+               "CServerSideClientBase::IsReservedSlot",
+               &hooks::Hook_CServerSideClientBase_IsReservedSlot);
     HookInline(hooks::g_ReplyConnection,
                "CNetworkGameServerBase::ReplyConnection",
-               &hooks::Hook_ReplyConnection, true);
+               &hooks::Hook_ReplyConnection);
     HookInline(hooks::g_CBaseEntity_TakeDamageOld,
                "CBaseEntity::TakeDamageOld",
-               &hooks::Hook_CBaseEntity_TakeDamageOld, true);
+               &hooks::Hook_CBaseEntity_TakeDamageOld);
     HookInline(hooks::g_CCitadelPlayerPawn_ModifyCurrency,
                "CCitadelPlayerPawn::ModifyCurrency",
-               &hooks::Hook_CCitadelPlayerPawn_ModifyCurrency, true);
+               &hooks::Hook_CCitadelPlayerPawn_ModifyCurrency);
     HookInline(hooks::g_CCitadelPlayerController_ClientConCommand,
                "CCitadelPlayerController::ClientConCommand",
-               &hooks::Hook_CCitadelPlayerController_ClientConCommand, true);
+               &hooks::Hook_CCitadelPlayerController_ClientConCommand);
 
     // Resolve IGameEventManager2 from a known xref
     {
@@ -225,24 +226,28 @@ void Deadworks::PostInit() {
         }
     }
 
-    // Required feature hooks
     HookInline(hooks::g_BuildGameSessionManifest,
                "CCitadelGameRules::BuildGameSessionManifest",
-               &hooks::Hook_BuildGameSessionManifest, true);
+               &hooks::Hook_BuildGameSessionManifest);
+    HookInline(hooks::g_ChangeGameState,
+               "CCitadelGameRules::ChangeGameState",
+               &hooks::Hook_ChangeGameState);
+    HookInline(hooks::g_AreAllLobbyPlayersConnected,
+               "AreAllLobbyPlayersConnected",
+               &hooks::Hook_AreAllLobbyPlayersConnected);
     HookInline(hooks::g_TraceShape,
                "TraceShape",
-               &hooks::Hook_TraceShape, true);
+               &hooks::Hook_TraceShape);
 
     // Touch hooks (StartTouch / EndTouch) are initialized lazily in OnEntityCreated
     // because we need an entity vtable to resolve the virtual function addresses.
 
-    // Optional hooks - features degrade gracefully if signatures are missing
     HookInline(hooks::g_CEntityInstance_AcceptInput,
                "CEntityInstance::AcceptInput",
                &hooks::Hook_CEntityInstance_AcceptInput);
-    HookInline(hooks::g_CEntityInstance_FireOutput,
-               "CEntityInstance::FireOutput",
-               &hooks::Hook_CEntityInstance_FireOutput);
+    HookInline(hooks::g_CEntityIOOutput_FireOutputInternal,
+               "CEntityIOOutput::FireOutputInternal",
+               &hooks::Hook_CEntityIOOutput_FireOutputInternal);
     HookInline(hooks::g_ProcessUsercmds,
                "CBasePlayerController::ProcessUsercmds",
                &hooks::Hook_ProcessUsercmds);
@@ -252,6 +257,12 @@ void Deadworks::PostInit() {
     HookInline(hooks::g_CModifierProperty_AddModifier,
                "CModifierProperty::AddModifier",
                &hooks::Hook_CModifierProperty_AddModifier);
+    HookInline(hooks::g_InitializeHeroOnPawn,
+               "CCitadelPlayerPawn::InitializeHeroOnPawn",
+               &hooks::Hook_InitializeHeroOnPawn);
+    HookInline(hooks::g_FireModifierEvent,
+               "FireModifierEvent",
+               &hooks::Hook_FireModifierEvent);
 
     // Enable A2S_INFO responses on community servers
     A2SPatch::Apply();
@@ -383,49 +394,6 @@ bool Deadworks::OnPre_PostEventAbstract(int msgId, const CNetMessage *pData, uin
     return result >= 1;
 }
 
-bool Deadworks::OnPre_SendNetMessage(CServerSideClientBase *client, const CNetMessage *pData) {
-    if (!m_managed.onSignonState || !pData)
-        return false;
-
-    auto *info = pData->GetSerializerPB()->GetNetMessageInfo();
-    if (!info || info->m_MessageId != 7) // net_SignonState
-        return false;
-
-    // CNetMessagePB inherits CNetMessage first, then PROTO_TYPE (multiple inheritance).
-    // SDK's As<T>() does static_cast<T*>(this) from CNetMessage* - valid downcast.
-    // const_cast is necessary because the SDK's As<T>() is non-const and we need to mutate.
-    // Use AsMessageLite + serialize/deserialize - we can't use generated C++ protobuf
-    // methods because our compiled protobuf layout doesn't match Valve's runtime.
-    auto *pb = const_cast<google::protobuf::MessageLite *>(pData->AsMessageLite());
-    if (!pb)
-        return false;
-
-    int size = static_cast<int>(pb->ByteSizeLong());
-    if (size <= 0)
-        return false;
-
-    std::vector<uint8_t> inBuf(size);
-    if (!pb->SerializeToArray(inBuf.data(), size))
-        return false;
-
-    g_Log->Info("[SignonState] before: {} bytes, proto={}", size, pb->DebugString());
-
-    static thread_local uint8_t outBuf[65536];
-    int outLen = 0;
-
-    m_managed.onSignonState(inBuf.data(), size, outBuf, &outLen);
-
-    if (outLen > 0) {
-        pb->Clear();
-        pb->ParseFromArray(outBuf, outLen);
-        g_Log->Info("[SignonState] after: {} bytes, proto={}", pb->ByteSizeLong(), pb->DebugString());
-    } else {
-        g_Log->Info("[SignonState] no modification from managed");
-    }
-
-    return false;
-}
-
 static constexpr ptrdiff_t kServerAddonsOffset = 0x158;
 
 void Deadworks::OnPre_ReplyConnection(void *server, CServerSideClientBase *client) {
@@ -457,22 +425,14 @@ void Deadworks::OnEntityCreated(CEntityInstance *pEntity) {
         auto &mem = MemoryDataLoader::Get();
 
         auto *vtable = *reinterpret_cast<void ***>(pEntity);
-        auto startTouchIdx = mem.GetVirtual("CBaseEntity::StartTouch");
-        auto endTouchIdx = mem.GetVirtual("CBaseEntity::EndTouch");
+        auto startTouchIdx = mem.GetVirtual("CBaseEntity::StartTouch").value();
+        auto endTouchIdx = mem.GetVirtual("CBaseEntity::EndTouch").value();
 
-        if (startTouchIdx && vtable[*startTouchIdx]) {
-            hooks::g_CBaseEntity_StartTouch = safetyhook::create_inline(vtable[*startTouchIdx], &hooks::Hook_CBaseEntity_StartTouch);
-            g_Log->Info("Hooked CBaseEntity::StartTouch (vtable index {})", *startTouchIdx);
-        } else {
-            g_Log->Warning("CBaseEntity::StartTouch virtual index not configured - touch events unavailable");
-        }
+        hooks::g_CBaseEntity_StartTouch = safetyhook::create_inline(vtable[startTouchIdx], &hooks::Hook_CBaseEntity_StartTouch);
+        g_Log->Info("Hooked CBaseEntity::StartTouch (vtable index {})", startTouchIdx);
 
-        if (endTouchIdx && vtable[*endTouchIdx]) {
-            hooks::g_CBaseEntity_EndTouch = safetyhook::create_inline(vtable[*endTouchIdx], &hooks::Hook_CBaseEntity_EndTouch);
-            g_Log->Info("Hooked CBaseEntity::EndTouch (vtable index {})", *endTouchIdx);
-        } else {
-            g_Log->Warning("CBaseEntity::EndTouch virtual index not configured - touch events unavailable");
-        }
+        hooks::g_CBaseEntity_EndTouch = safetyhook::create_inline(vtable[endTouchIdx], &hooks::Hook_CBaseEntity_EndTouch);
+        g_Log->Info("Hooked CBaseEntity::EndTouch (vtable index {})", endTouchIdx);
     }
 
     if (m_managed.onEntityCreated && pEntity)
@@ -496,6 +456,17 @@ void Deadworks::OnBuildGameSessionManifest(void *manifest) {
     g_pCurrentManifest = manifest;
     m_managed.onPrecacheResources();
     g_pCurrentManifest = nullptr;
+}
+
+void Deadworks::OnGameStateChanged(int newState) {
+    if (m_managed.onGameStateChanged)
+        m_managed.onGameStateChanged(newState);
+}
+
+bool Deadworks::ShouldAllowGameStateChange(int currentState, int newState) {
+    if (!m_managed.shouldAllowGameStateChange)
+        return true;
+    return m_managed.shouldAllowGameStateChange(currentState, newState) != 0;
 }
 
 void Deadworks::On_ISource2Server_GameFrame(bool simulating, bool bFirstTick, bool bLastTick) {
@@ -605,14 +576,41 @@ void Deadworks::OnEndTouch(CBaseEntity *entity, CBaseEntity *other) {
         m_managed.onEntityEndTouch(entity, other);
 }
 
-void Deadworks::OnEntityFireOutput(void *entity, void *activator, void *caller, const char *outputName) {
-    if (m_managed.onEntityFireOutput)
-        m_managed.onEntityFireOutput(entity, activator, caller, outputName);
+void Deadworks::OnPre_FireModifierEvent(EModifierEvent event, CBaseEntity *caster, CBaseEntity *target,
+                                      CBaseEntity *castEntity, void *eventData) {
+    // All entity arguments may legitimately be null (the native handles a null caster), so forward as-is.
+    if (m_managed.onModifierEvent)
+        m_managed.onModifierEvent(static_cast<uint32_t>(event), caster, target, castEntity, eventData);
 }
 
-void Deadworks::OnEntityAcceptInput(void *entity, void *activator, void *caller, const char *inputName, const char *value) {
+int Deadworks::OnEntityAcceptInputPre(const char *className, const char *inputName,
+                                       void *entity, void *activator, void *caller, void *variantValue) {
     if (m_managed.onEntityAcceptInput)
-        m_managed.onEntityAcceptInput(entity, activator, caller, inputName, value);
+        return m_managed.onEntityAcceptInput(className ? className : "", inputName ? inputName : "",
+                                              entity, activator, caller, variantValue);
+    return 0;
+}
+
+void Deadworks::OnEntityAcceptInputPost(const char *className, const char *inputName,
+                                         void *entity, void *activator, void *caller, void *variantValue) {
+    if (m_managed.onEntityAcceptInputPost)
+        m_managed.onEntityAcceptInputPost(className ? className : "", inputName ? inputName : "",
+                                           entity, activator, caller, variantValue);
+}
+
+int Deadworks::OnEntityFireOutputPre(const char *callerClass, const char *outputName,
+                                      void *activator, void *caller, const void *variantValue, float delay) {
+    if (m_managed.onEntityFireOutput)
+        return m_managed.onEntityFireOutput(callerClass ? callerClass : "", outputName ? outputName : "",
+                                             activator, caller, variantValue, delay);
+    return 0;
+}
+
+void Deadworks::OnEntityFireOutputPost(const char *callerClass, const char *outputName,
+                                        void *activator, void *caller, const void *variantValue, float delay) {
+    if (m_managed.onEntityFireOutputPost)
+        m_managed.onEntityFireOutputPost(callerClass ? callerClass : "", outputName ? outputName : "",
+                                          activator, caller, variantValue, delay);
 }
 
 void Deadworks::OnPre_ProcessUsercmds(int playerSlot, const uint8_t *batchBytes, int batchLen, int numCmds, bool paused, float margin, uint8_t *outBytes, int *outLen) {
@@ -651,6 +649,11 @@ void Deadworks::OnPost_CheckTransmit(CCheckTransmitInfo **ppInfoList, int nInfoC
     }
 }
 
+void Deadworks::OnPost_InitializeHeroOnPawn(void *pawn) {
+    if (m_managed.onPawnHeroInitialized && pawn)
+        m_managed.onPawnHeroInitialized(pawn);
+}
+
 void Deadworks::GetInterfaceFactories() {
     Module server("server");
     Module engine2("engine2");
@@ -658,6 +661,7 @@ void Deadworks::GetInterfaceFactories() {
     Module networksystem("networksystem");
     Module tier0("tier0");
     Module filesystem_stdio("filesystem_stdio");
+    Module soundsystem("soundsystem");
 
     InterfaceFactories.server = server.GetSymbol<CreateInterfaceFn>("CreateInterface");
     InterfaceFactories.engine2 = engine2.GetSymbol<CreateInterfaceFn>("CreateInterface");
@@ -665,5 +669,6 @@ void Deadworks::GetInterfaceFactories() {
     InterfaceFactories.networksystem = networksystem.GetSymbol<CreateInterfaceFn>("CreateInterface");
     InterfaceFactories.tier0 = tier0.GetSymbol<CreateInterfaceFn>("CreateInterface");
     InterfaceFactories.filesystem_stdio = filesystem_stdio.GetSymbol<CreateInterfaceFn>("CreateInterface");
+    InterfaceFactories.soundsystem = soundsystem.GetSymbol<CreateInterfaceFn>("CreateInterface");
 }
 } // namespace deadworks

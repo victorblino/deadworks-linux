@@ -4,7 +4,6 @@
 
 #include "Hooks/CBaseEntity.hpp"
 #include "../Memory/MemoryDataLoader.hpp"
-#include "../SDK/CBaseEntity.hpp"
 #include "../SDK/Schema/Schema.hpp"
 
 using namespace deadworks;
@@ -26,23 +25,6 @@ static CTakeDamageInfoDtorFn g_pCTakeDamageInfoDtor = nullptr;
 // ---------------------------------------------------------------------------
 // Native implementations
 // ---------------------------------------------------------------------------
-
-static void __cdecl NativeHurtEntity(void *victim, void *attacker, void *inflictor, void *ability, float damage, int32_t damageType) {
-    if (!victim) return;
-    if (!g_pCTakeDamageInfoCtor || !g_pCTakeDamageInfoDtor) return;
-
-    void *effectiveInflictor = inflictor ? inflictor : victim;
-    void *effectiveAttacker = attacker ? attacker : effectiveInflictor;
-
-    auto size = GetCTakeDamageInfoSize();
-    auto *info = static_cast<uint8_t *>(_aligned_malloc(size, 16));
-    if (!info) return;
-    std::memset(info, 0, size);
-    g_pCTakeDamageInfoCtor(info, effectiveInflictor, effectiveAttacker, ability, damage, damageType, 0);
-    hooks::g_CBaseEntity_TakeDamageOld.thiscall<void>(victim, info, nullptr);
-    g_pCTakeDamageInfoDtor(info);
-    _aligned_free(info);
-}
 
 static void *__cdecl NativeCreateDamageInfo(void *inflictor, void *attacker, void *ability, float damage, int32_t damageType) {
     if (!g_pCTakeDamageInfoCtor) return nullptr;
@@ -70,14 +52,13 @@ static void __cdecl NativeTakeDamage(void *victim, void *info) {
 // ---------------------------------------------------------------------------
 
 void deadworks::ResolveDamageStatics() {
-    auto opt = MemoryDataLoader::Get().GetOffset("CTakeDamageInfo::Ctor");
-    if (opt) g_pCTakeDamageInfoCtor = reinterpret_cast<CTakeDamageInfoCtorFn>(opt.value());
-    auto opt2 = MemoryDataLoader::Get().GetOffset("CTakeDamageInfo::Dtor");
-    if (opt2) g_pCTakeDamageInfoDtor = reinterpret_cast<CTakeDamageInfoDtorFn>(opt2.value());
+    g_pCTakeDamageInfoCtor = reinterpret_cast<CTakeDamageInfoCtorFn>(
+        MemoryDataLoader::Get().GetOffset("CTakeDamageInfo::Ctor").value());
+    g_pCTakeDamageInfoDtor = reinterpret_cast<CTakeDamageInfoDtorFn>(
+        MemoryDataLoader::Get().GetOffset("CTakeDamageInfo::Dtor").value());
 }
 
 void deadworks::PopulateDamageNatives(NativeCallbacks &cb) {
-    cb.HurtEntity = &NativeHurtEntity;
     cb.CreateDamageInfo = &NativeCreateDamageInfo;
     cb.DestroyDamageInfo = &NativeDestroyDamageInfo;
     cb.TakeDamage = &NativeTakeDamage;

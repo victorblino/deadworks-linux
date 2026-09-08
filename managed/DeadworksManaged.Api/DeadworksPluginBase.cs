@@ -8,14 +8,21 @@ namespace DeadworksManaged.Api;
 /// </summary>
 public abstract class DeadworksPluginBase : IDeadworksPlugin {
 	public abstract string Name { get; }
-	public abstract void OnLoad(bool isReload);
-	public abstract void OnUnload();
+
+	// Virtual, not abstract: a plugin whose work is all attributes and event
+	// hooks has nothing to do here, and should not have to write an empty
+	// method to say so. Name is the only member you must supply.
+	public virtual void OnLoad(bool isReload) { }
+	public virtual void OnUnload() { }
 
 	/// <summary>Per-plugin timer service.</summary>
 	protected ITimer Timer => TimerResolver.Get(this);
 
 	/// <summary>Per-plugin logger. Uses the plugin's <see cref="Name"/> as the log category.</summary>
 	protected ILogger Logger => LogResolver.Get(this);
+
+	/// <summary>Content addons this plugin needs connecting clients to download.</summary>
+	public virtual IReadOnlyList<string> ContentAddons => [];
 
 	public virtual void OnPrecacheResources() { }
 	public virtual void OnStartupServer() { }
@@ -33,10 +40,13 @@ public abstract class DeadworksPluginBase : IDeadworksPlugin {
 	public virtual void OnEntityDeleted(EntityDeletedEvent args) { }
 	public virtual void OnEntityStartTouch(EntityTouchEvent args) { }
 	public virtual void OnEntityEndTouch(EntityTouchEvent args) { }
+	public virtual void OnModifierEvent(ModifierEvent args) { }
 	public virtual void OnAbilityAttempt(AbilityAttemptEvent args) { }
 	public virtual void OnProcessUsercmds(ProcessUsercmdsEvent args) { }
 	public virtual HookResult OnAddModifier(AddModifierEvent args) => HookResult.Continue;
 	public virtual void OnConfigReloaded() { }
-	public virtual void OnSignonState(ref string addons) { }
 	public virtual void OnCheckTransmit(CheckTransmitEvent args) { }
+	public virtual void OnPawnHeroInitialized(CCitadelPlayerPawn pawn) { }
+	public virtual void OnGameStateChanged(EGameState newState) { }
+	public virtual bool OnGameStateChanging(EGameState currentState, EGameState newState) => true;
 }

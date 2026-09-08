@@ -14,10 +14,10 @@ internal static partial class PluginLoader
         DeadworksMetrics.ChatMessagesProcessed.Add(1);
         var result = HookResult.Continue;
 
-        // Try chat command dispatch first
         var text = message.ChatText.Trim();
-        if (text.StartsWith('/') && text.Length > 1)
+        if (text.Length > 1 && (text[0] == '/' || text[0] == '!'))
         {
+            var prefix = text[0];
             var parts = text[1..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
             var commandName = parts[0];
             var args = parts.Length > 1 ? parts[1..] : [];
@@ -30,7 +30,7 @@ internal static partial class PluginLoader
 
             if (handlers != null)
             {
-                var ctx = new ChatCommandContext(message, commandName, args);
+                var ctx = new ChatCommandContext(message, commandName, args, prefix);
                 foreach (var handler in handlers)
                 {
                     try
@@ -64,7 +64,9 @@ internal static partial class PluginLoader
 
             foreach (var method in methods)
             {
+#pragma warning disable CS0618 // ChatCommandAttribute is obsolete; intentionally scanned for back-compat
                 var attrs = method.GetCustomAttributes<ChatCommandAttribute>();
+#pragma warning restore CS0618
                 foreach (var attr in attrs)
                 {
                     var del = (Func<ChatCommandContext, HookResult>)Delegate.CreateDelegate(

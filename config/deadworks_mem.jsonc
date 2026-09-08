@@ -6,11 +6,11 @@
 		},
 		"CServerSideClientBase::FilterMessage": {
 			"library": "engine2.dll",
-			"windows": "40 53 48 83 EC 30 48 8B 02 48 8B D9"
+			"windows": "40 53 48 83 EC 30 48 8B 02 48 8B D9 48 8B CA FF 50 18 48 3B 05"
 		},
-		"CServerSideClient::SendNetMessage": {
+		"CServerSideClientBase::IsReservedSlot": {
 			"library": "engine2.dll",
-			"windows": "48 89 5C 24 ?? 48 89 74 24 ?? 55 57 41 56 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 33 FF"
+			"windows": "40 53 48 83 EC ?? 83 B9 ?? ?? ?? ?? ?? 48 8B D9 0F 84"
 		},
 		"CNetworkGameServerBase::ReplyConnection": {
 			"library": "engine2.dll",
@@ -22,11 +22,11 @@
 		},
 		"CBasePlayerController::SetPawn": {
 			"library": "server.dll",
-			"windows": "44 88 4C 24 ? 53"
+			"windows": "44 88 4C 24 ?? 53 57"
 		},
 		"CGCClientSystem::OnServerVersionCheck": {
 			"library": "server.dll",
-			"windows": "48 89 5C 24 ? 57 48 83 EC ? 8B FA 48 8B D9 BA ? ? ? ? 48 8D 0D ? ? ? ? E8 ? ? ? ? 48 85 C0 75 ? 48 8B 05 ? ? ? ? 48 8B 40 ? ? ? ? 74 ? 89 BB"
+			"windows": "48 89 5C 24 ?? 57 48 83 EC ?? 48 8B 05 ?? ?? ?? ?? 8B FA"
 		},
 		"CCitadelPlayerPawn::ModifyCurrency": {
 			"library": "server.dll",
@@ -46,11 +46,27 @@
 		},
 		"CCitadelPlayerPawn::SelectHeroInternal": {
 			"library": "server.dll",
-			"windows": "48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 48 8B DA 48 8B F1 E8 ?? ?? ?? ?? 48 8B F8 E8"
+			"windows": "40 55 41 54 41 55 41 56 48 8D 6C 24 88 48 81 EC 78 01 00 00 4C 8B E1 4C 8B EA"
+		},
+		"CHeroDefinitionManager::GetHeroById": {
+			"library": "server.dll",
+			"windows": "48 8B C1 85 D2 74 04 3B 11 72 03 33 C0 C3 48 8B 40 08 48 63 CA 48 8B 04 C8 C3"
+		},
+		"CHeroDefinitionManager::GetManagerAnchor": {
+			"library": "server.dll",
+			"windows": "40 53 56 41 55 48 83 EC 30 8B DA 48 8B F1 E8"
 		},
 		"CCitadelPlayerController::CreateHeroPawn": {
 			"library": "server.dll",
 			"windows": "48 8B C4 48 89 48 ?? 55 57 48 8D 68 ?? 48 81 EC ?? ?? ?? ?? 48 89 58 ?? 48 8B F9 48 8B 0D"
+		},
+		"CCitadelPlayerController::SpawnObserverPawn": {
+			"library": "server.dll",
+			"windows": "48 8B C4 55 53 48 8D 68 ?? 48 81 EC ?? ?? ?? ?? 48 89 78 ?? 4C 89 60"
+		},
+		"CCitadelPlayerController::ChangeTeamKeepHero": {
+			"library": "server.dll",
+			"windows": "40 53 48 83 EC ?? ?? ?? ?? 48 8B D9 C6 81 ?? ?? ?? ?? ?? FF 90 ?? ?? ?? ?? C6 83"
 		},
 		"CModifierProperty::AddModifier": {
 			"library": "server.dll",
@@ -80,9 +96,21 @@
 			"library": "server.dll",
 			"windows": "48 89 5C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 49 8B F0 48 8B D9"
 		},
+		"CEntityIOOutput::FireOutputInternal": {
+			"library": "server.dll",
+			"windows": "4C 89 4C 24 ?? 48 89 4C 24 ?? 53 56"
+		},
 		"CCitadelGameRules::BuildGameSessionManifest": {
 			"library": "server.dll",
 			"windows": "48 89 54 24 ?? 48 89 4C 24 ?? 55 53 56 57 41 54 41 55 41 56 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? ?? ?? ?? 4C 8B FA"
+		},
+		"CCitadelGameRules::ChangeGameState": {
+			"library": "server.dll",
+			"windows": "48 89 5C 24 ?? 48 89 74 24 ?? 55 57 41 54 41 56 41 57 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 4C 8D B9"
+		},
+		"AreAllLobbyPlayersConnected": {
+			"library": "server.dll",
+			"windows": "48 8B C4 4C 89 40 ?? 48 89 50 ?? 88 48"
 		},
 		"AddResource": {
 			"library": "server.dll",
@@ -94,11 +122,20 @@
 		},
 		"CCitadelPlayerController::ClientConCommand": {
 			"library": "server.dll",
-			"windows": "48 89 5C 24 ?? 48 89 74 24 ?? 55 57 41 54 41 55 41 57 48 8D AC 24 ?? ?? ?? ?? 48 81 EC ?? ?? ?? ?? 83 BA"
+			"windows": "48 89 74 24 ?? 55 57 41 54 41 55 41 57 48 8D AC 24"
 		},
 		"CCitadelPlayerPawn::ResetHero": {
 			"library": "server.dll",
 			"windows": "48 89 74 24 ?? 57 48 83 EC 20 0F B6 81 ?? ?? ?? ?? 0F B6 F2"
+		},
+		"CCitadelPlayerPawn::InitializeHeroOnPawn": {
+			"library": "server.dll",
+			"windows": "4C 8B DC 41 55 41 57 48 83 EC 58 0F B6 81 ?? ?? ?? ?? 44 0F B6 FA 83 C0 FE 4C 8B E9"
+		},
+		// Free function (event, caster, target, castEntity, eventData). Not exported by name; named after the Dota 2 equivalent FireModifierEvent(modifierfunction, CModifierParams const&).
+		"FireModifierEvent": {
+			"library": "server.dll",
+			"windows": "40 55 56 41 55 48 8D 6C 24 ?? 48 81 EC ?? ?? ?? ?? 33 F6"
 		},
 		"CCitadelAbilityComponent::FindAbilityByName": {
 			"library": "server.dll",
@@ -127,7 +164,7 @@
 		},
 		"TraceShape": {
 			"library": "server.dll",
-			"windows": "48 89 5C 24 20 48 89 4C 24 08 55 57 41 54 41 55 41 56 48 8D AC 24"
+			"windows": "48 89 5C 24 ?? 48 89 4C 24 ?? 55 56 41 54"
 		},
 		"CBasePlayerController::ProcessUsercmds": {
 			"library": "server.dll",
@@ -135,7 +172,7 @@
 		},
 		"CCitadelPlayerPawn::AbilityThink": {
 			"library": "server.dll",
-			"windows": "48 89 4C 24 ?? 55 53 56 41 55 41 57"
+			"windows": "40 55 53 41 54 41 55 41 57 48 8D AC 24"
 		},
 		"CCitadelPlayerPawn::AddItem": {
 			"library": "server.dll",
@@ -148,6 +185,10 @@
 		"CBaseModelEntity::SetModel": {
 			"library": "server.dll",
 			"windows": "40 53 48 83 EC 20 48 8B D9 4C 8B C2 48 8B 0D ?? ?? ?? ?? 48 8D 54 24 40 48 8B 01 FF 50 60 48 8B 54 24 40 48 8B CB E8 15 00 00 00"
+		},
+		"CBaseModelEntity::GetModelName": {
+			"library": "server.dll",
+			"windows": "48 89 5C 24 ?? 57 48 83 EC ?? 48 8B 41 ?? 48 8B DA 33 FF ?? ?? ?? 48 85 D2 74 ?? 48 8B 40 ?? 4C 63 05 ?? ?? ?? ?? 48 8B 88 ?? ?? ?? ?? ?? ?? ?? ?? ?? B9 ?? ?? ?? ?? 66 3B C1 74 ?? ?? ?? ?? ?? EB ?? 48 8B CF 48 85 C9 74 ?? 48 8B 49 ?? ?? ?? ?? FF 50 ?? 48 85 C0 74 ?? ?? ?? ?? 48 8B B8"
 		},
 		"CCitadelAbilityComponent::ExecuteAbilityBySlot": {
 			"library": "server.dll",
@@ -172,6 +213,14 @@
 		"CCitadelBaseAbility::SetUpgradeBits": {
 			"library": "server.dll",
 			"windows": "48 8B C4 89 50 ?? 55 57 48 8D 68"
+		},
+		"CCitadelBaseAbility::ImbueAbility": {
+			"library": "server.dll",
+			"windows": "48 85 D2 0F 84 ?? ?? ?? ?? 41 56 41 57 48 83 EC ?? 48 8B 82"
+		},
+		"CitadelAbilityVData::CanImbueAbility": {
+			"library": "server.dll",
+			"windows": "48 89 5C 24 ?? 48 89 6C 24 ?? 48 89 74 24 ?? 57 48 83 EC ?? 0F B6 41"
 		},
 		"SubclassRegistry::Lookup": {
 			"library": "server.dll",
@@ -198,8 +247,10 @@
 		"IGameEventManager2::FireEvent": 7,
 		"IGameEventSystem::PostEventAbstract": 16,
 		"CBaseEntity::StartTouch": 148,
-		"CBaseEntity::Touch": 149,
 		"CBaseEntity::EndTouch": 150,
-		"ISource2GameEntities::CheckTransmit": 12
+		"ISource2GameEntities::CheckTransmit": 12,
+		"CSoundSystem::TakeGuid": 77,
+		"CPlayer_ObserverServices::SetObserverTarget": 25,
+		"CPlayer_ObserverServices::SetObserverMode": 28
 	}
 }

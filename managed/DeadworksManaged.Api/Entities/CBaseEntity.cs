@@ -3,10 +3,50 @@ using System.Numerics;
 namespace DeadworksManaged.Api;
 
 /// <summary>Base managed wrapper for all Source 2 entities. Provides common operations: health, team, lifecycle, modifiers, schema access.</summary>
-public unsafe class CBaseEntity : NativeEntity {
-	internal CBaseEntity(nint handle) : base(handle) { }
+public unsafe class CBaseEntity : NativeEntity, IEquatable<CBaseEntity> {
+	/// <summary>Sentinel value for an invalid CEntityHandle.</summary>
+	public const uint InvalidEntityHandle = 0xFFFFFFFF;
 
-	public override string ToString() => IsValid ? $"{Classname} ({DesignerName}) [0x{Handle:X}]" : "CBaseEntity [null]";
+	/// <summary>Packed CEntityHandle (serial + index) captured at construction. Stable identity across frames.</summary>
+	public uint EntityHandle { get; }
+
+	/// <summary>Resolves the native pointer through the entity system on every access. Returns 0 if the entity has been destroyed (serial mismatch).</summary>
+	public override nint Handle => EntityHandle == InvalidEntityHandle ? 0 : (nint)NativeInterop.GetEntityFromHandle(EntityHandle);
+
+	/// <summary>True only if the entity still exists in the entity system. Returns false once the entity is destroyed (serial mismatch) or if the handle was never valid.</summary>
+	public override bool IsValid => EntityHandle != InvalidEntityHandle && NativeInterop.GetEntityFromHandle(EntityHandle) != null;
+
+	/// <summary>Entity index (lower 14 bits of the handle).</summary>
+	public int EntityIndex => EntityHandle == InvalidEntityHandle ? -1 : (int)(EntityHandle & 0x3FFF);
+
+	internal CBaseEntity(nint ptr) : base() {
+		EntityHandle = ptr != 0 ? NativeInterop.GetEntityHandle((void*)ptr) : InvalidEntityHandle;
+	}
+
+	/// <summary>Construct directly from a packed entity handle without a pointer round-trip.</summary>
+	internal CBaseEntity(uint entityHandle) : base() {
+		EntityHandle = entityHandle;
+	}
+
+	public override string ToString() {
+		nint h = Handle;
+		return h != 0 ? $"{Classname} ({DesignerName}) [0x{h:X}]" : "CBaseEntity [null]";
+	}
+
+	/// <summary>Two wrappers are equal iff they point at the same native entity (same packed handle: serial + index). Wrapper type is ignored.</summary>
+	public bool Equals(CBaseEntity? other) => other is not null && EntityHandle == other.EntityHandle;
+
+	public override bool Equals(object? obj) => obj is CBaseEntity other && Equals(other);
+
+	public override int GetHashCode() => EntityHandle.GetHashCode();
+
+	public static bool operator ==(CBaseEntity? a, CBaseEntity? b) {
+		if (ReferenceEquals(a, b)) return true;
+		if (a is null || b is null) return false;
+		return a.EntityHandle == b.EntityHandle;
+	}
+
+	public static bool operator !=(CBaseEntity? a, CBaseEntity? b) => !(a == b);
 
 	/// <summary>Creates a new entity by class name (e.g. "info_particle_system"). Returns null on failure.</summary>
 	public static CBaseEntity? CreateByName(string className) {
@@ -52,9 +92,9 @@ public unsafe class CBaseEntity : NativeEntity {
 
 	/// <summary>Gets an entity by its entity handle (CEntityHandle as uint32). Returns null if invalid.</summary>
 	public static CBaseEntity? FromHandle(uint handle) {
-		if (handle == 0xFFFFFFFF) return null;
+		if (handle == InvalidEntityHandle) return null;
 		var ptr = (nint)NativeInterop.GetEntityFromHandle(handle);
-		return ptr != 0 ? new CBaseEntity(ptr) : null;
+		return ptr != 0 ? new CBaseEntity(handle) : null;
 	}
 
 	/// <summary>Gets an entity by its global entity index. Returns null if the index is invalid or the entity doesn't exist.</summary>
@@ -65,10 +105,10 @@ public unsafe class CBaseEntity : NativeEntity {
 
 	/// <summary>Gets a typed entity by handle. Returns null if invalid or native class doesn't match T.</summary>
 	public static T? FromHandle<T>(uint handle) where T : CBaseEntity {
-		if (handle == 0xFFFFFFFF) return null;
+		if (handle == InvalidEntityHandle) return null;
 		var ptr = (nint)NativeInterop.GetEntityFromHandle(handle);
 		if (ptr == 0) return null;
-		var entity = new CBaseEntity(ptr);
+		var entity = new CBaseEntity(handle);
 		return NativeEntityFactory.IsMatch<T>(entity.Classname) ? NativeEntityFactory.Create<T>(ptr) : null;
 	}
 
@@ -121,12 +161,6 @@ public unsafe class CBaseEntity : NativeEntity {
 
 	/// <summary>Marks this entity for removal at the end of the current frame (UTIL_Remove).</summary>
 	public void Remove() => NativeInterop.RemoveEntity((void*)Handle);
-
-	/// <summary>Gets the entity handle (CEntityHandle as uint32) for this entity.</summary>
-	public uint EntityHandle => NativeInterop.GetEntityHandle((void*)Handle);
-
-	/// <summary>Gets the entity index (lower 14 bits of the handle).</summary>
-	public int EntityIndex => (int)(EntityHandle & 0x3FFF);
 
 	/// <summary>Queues and executes entity spawn.</summary>
 	public void Spawn() {
@@ -290,11 +324,20 @@ public unsafe class CBaseEntity : NativeEntity {
 
 	public Vector3 Position => BodyComponent?.SceneNode?.AbsOrigin ?? Vector3.Zero;
 
+	private static readonly SchemaAccessor<nint> _pCollision = new("CBaseEntity"u8, "m_pCollision"u8);
+	/// <summary>Collision property (OBB mins/maxs, bounding radius). Null for entities without a collision representation.</summary>
+	public CCollisionProperty? Collision {
+		get {
+			nint ptr = _pCollision.Get(Handle);
+			return ptr != 0 ? new CCollisionProperty(ptr, this) : null;
+		}
+	}
+
 	private static readonly SchemaAccessor<int> _health = new("CBaseEntity"u8, "m_iHealth"u8);
 	public int Health { get => _health.Get(Handle); set => _health.Set(Handle, value); }
 
 	private static readonly SchemaAccessor<int> _maxHealth = new("CBaseEntity"u8, "m_iMaxHealth"u8);
-	public int MaxHealth { get => _maxHealth.Get(Handle); set => _maxHealth.Set(Handle, value); }
+	public int MaxHealth => _maxHealth.Get(Handle);
 
 	/// <summary>Gets the effective max health through the engine virtual call (accounts for modifiers, abilities, buffs).</summary>
 	public int GetMaxHealth() => NativeInterop.GetMaxHealth((void*)Handle);
@@ -309,6 +352,13 @@ public unsafe class CBaseEntity : NativeEntity {
 	public LifeState LifeState { get => (LifeState)_lifeState.Get(Handle); set => _lifeState.Set(Handle, (uint)value); }
 	public bool IsAlive => LifeState == LifeState.Alive;
 
+	private static readonly SchemaAccessor<uint> _fFlags = new("CBaseEntity"u8, "m_fFlags"u8);
+	/// <summary>Engine flag bits (on-ground, ducking, client, in-vehicle, godmode, etc.). See <see cref="EntityFlags"/>.</summary>
+	public EntityFlags Flags { get => (EntityFlags)_fFlags.Get(Handle); set => _fFlags.Set(Handle, (uint)value); }
+
+	/// <summary>True if this entity has the <see cref="EntityFlags.FakeClient"/> flag set (i.e. it is a bot).</summary>
+	public bool IsBot => (Flags & EntityFlags.FakeClient) != 0;
+
 	private static readonly SchemaAccessor<uint> _hGroundEntity = new("CBaseEntity"u8, "m_hGroundEntity"u8);
 	/// <summary>The entity this entity is standing on, or null if airborne.</summary>
 	public CBaseEntity? GroundEntity => FromHandle(_hGroundEntity.Get(Handle));
@@ -318,6 +368,9 @@ public unsafe class CBaseEntity : NativeEntity {
 	private static readonly SchemaAccessor<Vector3> _vecAbsVelocity = new("CBaseEntity"u8, "m_vecAbsVelocity"u8);
 	/// <summary>The entity's absolute velocity.</summary>
 	public Vector3 AbsVelocity { get => _vecAbsVelocity.Get(Handle); set => _vecAbsVelocity.Set(Handle, value); }
+
+	private static readonly SchemaAccessor<float> _flFriction = new("CBaseEntity"u8, "m_flFriction"u8);
+	public float Friction { get => _flFriction.Get(Handle); set => _flFriction.Set(Handle, value); }
 
 	private static readonly SchemaAccessor<nint> _modifierProp = new("CBaseEntity"u8, "m_pModifierProp"u8);
 	public CModifierProperty? ModifierProp {
@@ -336,14 +389,11 @@ public unsafe class CBaseEntity : NativeEntity {
 		}
 	}
 
-	/// <summary>Applies damage to this entity using UTIL_InflictGenericDamage (convenience wrapper around <see cref="TakeDamage"/>).</summary>
+	/// <summary>Applies damage to this entity (convenience wrapper around <see cref="TakeDamage"/>).</summary>
 	public void Hurt(float damage, CBaseEntity? attacker = null, CBaseEntity? inflictor = null, CBaseEntity? ability = null, int damageType = 0) {
-		NativeInterop.HurtEntity(
-			(void*)Handle,
-			attacker != null ? (void*)attacker.Handle : null,
-			inflictor != null ? (void*)inflictor.Handle : null,
-			ability != null ? (void*)ability.Handle : null,
-			damage, damageType);
+		using var info = new CTakeDamageInfo(damage, attacker ?? inflictor ?? this, inflictor ?? this, ability, damageType);
+		info.DamageFlags |= TakeDamageFlags.AllowSuicide;
+		TakeDamage(info);
 	}
 
 	/// <summary>Applies damage to this entity using an existing <see cref="CTakeDamageInfo"/> struct.</summary>
@@ -357,6 +407,19 @@ public unsafe class CBaseEntity : NativeEntity {
 		fixed (byte* ptr = utf8) {
 			NativeInterop.SetModel((void*)Handle, ptr);
 		}
+	}
+
+	/// <summary>The current model path for this entity (e.g. "models/heroes_wip/werewolf/werewolf.vmdl"), or empty if unset.</summary>
+	public string ModelName {
+		get {
+			byte* ptr = NativeInterop.GetModelName((void*)Handle);
+			return System.Runtime.InteropServices.Marshal.PtrToStringUTF8((nint)ptr) ?? "";
+		}
+	}
+
+	/// <summary>Sets this entity's model scale (1.0 = default).</summary>
+	public void SetScale(float scale) {
+		NativeInterop.SetScale((void*)Handle, scale);
 	}
 
 	/// <summary>Read any schema field by class and field name. For repeated access, prefer a static <see cref="SchemaAccessor{T}"/> instead.</summary>

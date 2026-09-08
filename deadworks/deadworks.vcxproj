@@ -129,6 +129,7 @@
       <PrecompiledHeader>Use</PrecompiledHeader>
       <PrecompiledHeaderFile>pch.hpp</PrecompiledHeaderFile>
       <ForcedIncludeFiles>pch.hpp</ForcedIncludeFiles>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -194,7 +195,6 @@ if not "$(DeadlockDir)"=="" if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(
     <ClCompile Include="src\Core\Hooks\GameEvents.cpp" />
     <ClCompile Include="src\Core\Hooks\CServerSideClientBase.cpp" />
     <ClCompile Include="src\Core\Hooks\PostEventAbstract.cpp" />
-    <ClCompile Include="src\Core\Hooks\SendNetMessage.cpp" />
     <ClCompile Include="src\Core\Hooks\ReplyConnection.cpp" />
     <ClCompile Include="src\Core\Hooks\NetworkServerService.cpp" />
     <ClCompile Include="src\Core\Hooks\Source2GameClients.cpp" />
@@ -205,6 +205,8 @@ if not "$(DeadlockDir)"=="" if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(
     <ClCompile Include="src\Core\Hooks\AbilityThink.cpp" />
     <ClCompile Include="src\Core\Hooks\AddModifier.cpp" />
     <ClCompile Include="src\Core\Hooks\CheckTransmit.cpp" />
+    <ClCompile Include="src\Core\Hooks\InitializeHeroOnPawn.cpp" />
+    <ClCompile Include="src\Core\Hooks\FireModifierEvent.cpp" />
     <ClCompile Include="src\Core\A2SPatch.cpp" />
     <ClCompile Include="src\Core\Deadworks.cpp" />
     <ClCompile Include="src\Core\NativeCallbacks.cpp" />
@@ -213,6 +215,8 @@ if not "$(DeadlockDir)"=="" if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(
     <ClCompile Include="src\Core\NativeHero.cpp" />
     <ClCompile Include="src\Core\ManagedCallbacks.cpp" />
     <ClCompile Include="src\Core\Hooks\BuildGameSessionManifest.cpp" />
+    <ClCompile Include="src\Core\Hooks\ChangeGameState.cpp" />
+    <ClCompile Include="src\Core\Hooks\AreAllLobbyPlayersConnected.cpp" />
     <ClCompile Include="src\Memory\MemoryDataLoader.cpp" />
     <ClCompile Include="src\Memory\Scanner.cpp" />
     <ClCompile Include="src\SDK\Interfaces.cpp" />
@@ -242,7 +246,6 @@ if not "$(DeadlockDir)"=="" if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(
     <ClInclude Include="src\Core\Hooks\GameEvents.hpp" />
     <ClInclude Include="src\Core\Hooks\CServerSideClientBase.hpp" />
     <ClInclude Include="src\Core\Hooks\PostEventAbstract.hpp" />
-    <ClInclude Include="src\Core\Hooks\SendNetMessage.hpp" />
     <ClInclude Include="src\Core\Hooks\ReplyConnection.hpp" />
     <ClInclude Include="src\Core\Hooks\NetworkServerService.hpp" />
     <ClInclude Include="src\Core\Hooks\Source2GameClients.hpp" />
@@ -253,7 +256,11 @@ if not "$(DeadlockDir)"=="" if exist "$(TargetDir)$(TargetName).pdb" copy /Y "$(
     <ClInclude Include="src\Core\Hooks\AbilityThink.hpp" />
     <ClInclude Include="src\Core\Hooks\AddModifier.hpp" />
     <ClInclude Include="src\Core\Hooks\CheckTransmit.hpp" />
+    <ClInclude Include="src\Core\Hooks\InitializeHeroOnPawn.hpp" />
+    <ClInclude Include="src\Core\Hooks\FireModifierEvent.hpp" />
     <ClInclude Include="src\Core\Hooks\BuildGameSessionManifest.hpp" />
+    <ClInclude Include="src\Core\Hooks\ChangeGameState.hpp" />
+    <ClInclude Include="src\Core\Hooks\AreAllLobbyPlayersConnected.hpp" />
     <ClInclude Include="src\Core\A2SPatch.hpp" />
     <ClInclude Include="src\Core\Deadworks.hpp" />
     <ClInclude Include="src\Core\NativeCallbacks.hpp" />

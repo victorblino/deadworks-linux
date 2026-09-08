@@ -66,12 +66,17 @@ void deadworks::InitializeManagedCallbacks(DotNetHost &host, ManagedCallbacks &m
     BindCallback(host, assemblyPath, managed.onPrecacheResources, L"OnPrecacheResources");
     BindCallback(host, assemblyPath, managed.onEntityStartTouch, L"OnEntityStartTouch");
     BindCallback(host, assemblyPath, managed.onEntityEndTouch, L"OnEntityEndTouch");
-    BindCallback(host, assemblyPath, managed.onEntityFireOutput, L"OnEntityFireOutput");
+    BindCallback(host, assemblyPath, managed.onModifierEvent, L"OnModifierEvent");
     BindCallback(host, assemblyPath, managed.onEntityAcceptInput, L"OnEntityAcceptInput");
+    BindCallback(host, assemblyPath, managed.onEntityAcceptInputPost, L"OnEntityAcceptInputPost");
+    BindCallback(host, assemblyPath, managed.onEntityFireOutput, L"OnEntityFireOutput");
+    BindCallback(host, assemblyPath, managed.onEntityFireOutputPost, L"OnEntityFireOutputPost");
     BindCallback(host, assemblyPath, managed.onProcessUsercmds, L"OnProcessUsercmds");
     BindCallback(host, assemblyPath, managed.onAbilityAttempt, L"OnAbilityAttempt");
     BindCallback(host, assemblyPath, g_ManagedConCommandDispatch, L"OnConCommandDispatch");
     BindCallback(host, assemblyPath, managed.onAddModifier, L"OnAddModifier");
-    BindCallback(host, assemblyPath, managed.onSignonState, L"OnSignonState");
     BindCallback(host, assemblyPath, managed.onCheckTransmit, L"OnCheckTransmit");
+    BindCallback(host, assemblyPath, managed.onPawnHeroInitialized, L"OnPawnHeroInitialized");
+    BindCallback(host, assemblyPath, managed.onGameStateChanged, L"OnGameStateChanged");
+    BindCallback(host, assemblyPath, managed.shouldAllowGameStateChange, L"ShouldAllowGameStateChange");
 }
