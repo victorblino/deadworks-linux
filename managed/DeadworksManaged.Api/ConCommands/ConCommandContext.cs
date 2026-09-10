@@ -11,10 +11,10 @@ public sealed unsafe class ConCommandContext
     /// <summary>The command name that was typed (args[0]).</summary>
     public string Command { get; }
 
-    /// <summary>All arguments including the command name at index 0.</summary>
+    /// <summary>All arguments including the command name at index 0, as tokenized by the engine. A double-quoted run is a single argument with the quotes stripped.</summary>
     public string[] Args { get; }
 
-    /// <summary>The argument string after the command name. Empty if no args.</summary>
+    /// <summary>The arguments after the command name, joined with single spaces. Quoting is not preserved, so use <see cref="Args"/> to tell <c>"a b"</c> from <c>a b</c>. Empty if no args.</summary>
     public string ArgString => Args.Length > 1 ? string.Join(" ", Args, 1, Args.Length - 1) : "";
 
     /// <summary>True when invoked from server console (no player).</summary>

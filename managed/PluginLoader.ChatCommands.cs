@@ -11,14 +11,8 @@ internal static partial class PluginLoader
     {
         var result = HookResult.Continue;
 
-        var text = message.ChatText.Trim();
-        if (text.Length > 1 && (text[0] == '/' || text[0] == '!'))
+        if (TryParseChatCommand(message.ChatText, out var prefix, out var commandName, out var args))
         {
-            var prefix = text[0];
-            var parts = text[1..].Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            var commandName = parts[0];
-            var args = parts.Length > 1 ? parts[1..] : [];
-
             List<Func<ChatCommandContext, HookResult>>? handlers;
             lock (_lock)
             {
@@ -48,6 +42,30 @@ internal static partial class PluginLoader
 
         // Fall through to plugin OnChatMessage
         return DispatchToPluginsWithResult(p => p.OnChatMessage(message), nameof(IDeadworksPlugin.OnChatMessage));
+    }
+
+    /// <summary>
+    /// Splits <c>/name args...</c> or <c>!name args...</c> into the command name and its arguments.
+    /// Tokenized once, here: a double-quoted run is a single argument, so consumers must not re-join and re-split.
+    /// </summary>
+    internal static bool TryParseChatCommand(string chatText, out char prefix, out string commandName, out string[] args)
+    {
+        prefix = default;
+        commandName = "";
+        args = [];
+
+        var text = chatText.Trim();
+        if (text.Length <= 1 || (text[0] != '/' && text[0] != '!'))
+            return false;
+
+        var tokens = Commands.CommandTokenizer.Tokenize(text[1..]);
+        if (tokens.Length == 0)
+            return false;
+
+        prefix = text[0];
+        commandName = tokens[0];
+        args = tokens[1..];
+        return true;
     }
 
     // --- Chat command registration ---

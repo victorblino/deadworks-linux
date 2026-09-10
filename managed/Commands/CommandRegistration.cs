@@ -80,10 +80,7 @@ internal static class CommandRegistration
 
             void reply(string msg) => ReplyViaChat(ctx.Controller, msg);
 
-            var argString = ctx.Args.Length > 0 ? string.Join(" ", ctx.Args) : "";
-            var tokens = CommandTokenizer.Tokenize(argString);
-
-            if (!CommandBinder.TryBind(namedPlan, tokens, ctx.Controller, out var boundArgs, out var error, out var silentSkip))
+            if (!CommandBinder.TryBind(namedPlan, ctx.Args, ctx.Controller, out var boundArgs, out var error, out var silentSkip))
             {
                 if (silentSkip)
                     return resultOnSuccess;
@@ -125,10 +122,9 @@ internal static class CommandRegistration
 
             void reply(string msg) => ReplyViaConsole(ctx.Controller, msg);
 
-            var argString = ctx.Args.Length > 1
-                ? string.Join(" ", ctx.Args, 1, ctx.Args.Length - 1)
-                : "";
-            var tokens = CommandTokenizer.Tokenize(argString);
+            // The engine's CCommand has already tokenized the line and stripped the quotes, so
+            // re-tokenizing a space-joined copy would split "one two" back into two tokens.
+            var tokens = ctx.Args.Length > 1 ? ctx.Args[1..] : [];
 
             if (!CommandBinder.TryBind(namedPlan, tokens, ctx.Controller, out var boundArgs, out var error, out var silentSkip))
             {

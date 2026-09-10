@@ -9,7 +9,7 @@ public sealed class ChatCommandContext
     /// <summary>The matched command string (e.g. <c>"!mycommand"</c>).</summary>
     public string Command { get; }
 
-    /// <summary>Arguments following the command, split by whitespace.</summary>
+    /// <summary>Arguments following the command, split on whitespace. A double-quoted run is a single argument with the quotes stripped.</summary>
     public string[] Args { get; }
 
     /// <summary>The prefix character that introduced this command (<c>'/'</c> or <c>'!'</c>).</summary>
