@@ -19,6 +19,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Read Deadworks version
+        id: version
+        shell: bash
+        run: |
+          version=$(sed -n 's/.*Version = "\(v[^"]*\)".*/\1/p' managed/DeadworksManaged.Api/Deadworks.cs)
+          test -n "$version"
+          echo "value=$version" >> "$GITHUB_OUTPUT"
+
       - name: Docker meta
         id: meta
         uses: docker/metadata-action@v6
@@ -26,8 +34,8 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            type=semver,value=${{ steps.version.outputs.value }},pattern={{version}}
+            type=semver,value=${{ steps.version.outputs.value }},pattern={{major}}.{{minor}}
             type=sha
 
       - uses: docker/setup-qemu-action@v4
