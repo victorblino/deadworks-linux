@@ -102,6 +102,9 @@
     <ClCompile Include="src\Core\Hooks\CCitadelPlayerController.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Core\Hooks\CBasePlayerController.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="src\Core\Hooks\TraceShape.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -136,6 +139,12 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Core\Hooks\AreAllLobbyPlayersConnected.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Hooks\GetPlayerStartLane.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Core\Hooks\MatchMapOverride.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="src\Memory\MemoryDataLoader.cpp">
@@ -281,6 +290,9 @@
     <ClInclude Include="src\Core\Hooks\CCitadelPlayerController.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Core\Hooks\CBasePlayerController.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="src\Core\Hooks\BuildGameSessionManifest.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -288,6 +300,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Core\Hooks\AreAllLobbyPlayersConnected.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\Hooks\GetPlayerStartLane.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Core\Hooks\MatchMapOverride.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\SDK\CEntitySystem.hpp">

@@ -5,6 +5,7 @@ using Google.Protobuf;
 using Microsoft.Extensions.Logging;
 using DeadworksManaged.Api;
 using DeadworksManaged.Api.UI;
+using DeadworksManaged.Api.Utils;
 using DeadworksManaged.Telemetry;
 
 namespace DeadworksManaged;
@@ -313,6 +314,9 @@ internal static partial class PluginLoader
             PluginRegistrationTracker.Remove(normalizedPath);
         }
 
+        // Stop the plugin's zones before OnUnload, like its timers below.
+        ZoneRegistry.RemoveOwnedBy(entry.Context);
+
         foreach (var plugin in entry.Plugins)
         {
             try
@@ -488,6 +492,8 @@ internal static partial class PluginLoader
         _frameStopwatch.Restart();
         TimerEngine.OnTick();
         UI.Tick();
+        if (simulating)
+            ZoneRegistry.Tick();
         DispatchToPlugins(p => p.OnGameFrame(simulating, firstTick, lastTick), nameof(IDeadworksPlugin.OnGameFrame));
         _frameStopwatch.Stop();
 
@@ -542,6 +548,9 @@ internal static partial class PluginLoader
 
     public static void DispatchClientFullConnect(ClientFullConnectEvent args)
         => DispatchToPlugins(p => p.OnClientFullConnect(args), nameof(IDeadworksPlugin.OnClientFullConnect));
+
+    public static void DispatchClientDisconnecting(ClientDisconnectedEvent args)
+        => DispatchToPlugins(p => p.OnClientDisconnecting(args), nameof(IDeadworksPlugin.OnClientDisconnecting));
 
     public static void DispatchClientDisconnect(ClientDisconnectedEvent args)
     {
@@ -643,6 +652,7 @@ internal static partial class PluginLoader
         // Dispose all timer services and reset engine
         TimerRegistry.Clear();
         TimerEngine.Reset();
+        ZoneRegistry.Clear();
 
         foreach (var entry in entries)
         {
