@@ -15,3 +15,12 @@ dlw/
 deps/
 .env
 .idea
+
+# Local state from running docker/compose.yaml in place; .env holds a Steam password
+docker/.env
+docker/plugins/
+docker/configs/
+docker/data/
+docker/steam/
+docker/one/
+docker/two/
