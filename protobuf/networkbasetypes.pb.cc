@@ -2944,7 +2944,7 @@ CMsgPlayerInfo::CMsgPlayerInfo(const CMsgPlayerInfo& from)
     _impl_.name_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_name()) {
-    _this->_impl_.name_.Set(from._internal_name(),
+    _this->_impl_.name_.Set(from._internal_name(), 
       _this->GetArenaForAllocation());
   }
   ::memcpy(&_impl_.xuid_, &from._impl_.xuid_,
@@ -8849,7 +8849,7 @@ QuantizedFloatEncoderAlias_t::QuantizedFloatEncoderAlias_t(const QuantizedFloatE
     _impl_.name_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_name()) {
-    _this->_impl_.name_.Set(from._internal_name(),
+    _this->_impl_.name_.Set(from._internal_name(), 
       _this->GetArenaForAllocation());
   }
   ::memcpy(&_impl_.bit_count_, &from._impl_.bit_count_,

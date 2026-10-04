@@ -6937,7 +6937,7 @@ CMsgSource2PlayStatsPackedRecordList::CMsgSource2PlayStatsPackedRecordList(const
     _impl_.record_name_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_record_name()) {
-    _this->_impl_.record_name_.Set(from._internal_record_name(),
+    _this->_impl_.record_name_.Set(from._internal_record_name(), 
       _this->GetArenaForAllocation());
   }
   _this->_impl_.record_count_ = from._impl_.record_count_;
@@ -8101,7 +8101,7 @@ CSource2Metrics_FetchMapData_Request::CSource2Metrics_FetchMapData_Request(const
     _impl_.map_name_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_map_name()) {
-    _this->_impl_.map_name_.Set(from._internal_map_name(),
+    _this->_impl_.map_name_.Set(from._internal_map_name(), 
       _this->GetArenaForAllocation());
   }
   _impl_.param_.InitDefault();
@@ -8109,7 +8109,7 @@ CSource2Metrics_FetchMapData_Request::CSource2Metrics_FetchMapData_Request(const
     _impl_.param_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_param()) {
-    _this->_impl_.param_.Set(from._internal_param(),
+    _this->_impl_.param_.Set(from._internal_param(), 
       _this->GetArenaForAllocation());
   }
   ::memcpy(&_impl_.appid_, &from._impl_.appid_,
@@ -8500,7 +8500,7 @@ CSource2Metrics_FetchMapData_Response_MapData::CSource2Metrics_FetchMapData_Resp
     _impl_.name_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_name()) {
-    _this->_impl_.name_.Set(from._internal_name(),
+    _this->_impl_.name_.Set(from._internal_name(), 
       _this->GetArenaForAllocation());
   }
   _impl_.type_.InitDefault();
@@ -8508,7 +8508,7 @@ CSource2Metrics_FetchMapData_Response_MapData::CSource2Metrics_FetchMapData_Resp
     _impl_.type_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_type()) {
-    _this->_impl_.type_.Set(from._internal_type(),
+    _this->_impl_.type_.Set(from._internal_type(), 
       _this->GetArenaForAllocation());
   }
   _impl_.data_.InitDefault();
@@ -8516,7 +8516,7 @@ CSource2Metrics_FetchMapData_Response_MapData::CSource2Metrics_FetchMapData_Resp
     _impl_.data_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_data()) {
-    _this->_impl_.data_.Set(from._internal_data(),
+    _this->_impl_.data_.Set(from._internal_data(), 
       _this->GetArenaForAllocation());
   }
   // @@protoc_insertion_point(copy_constructor:CSource2Metrics_FetchMapData_Response.MapData)
@@ -9047,7 +9047,7 @@ CUserMessage_UserSentBugBug::CUserMessage_UserSentBugBug(const CUserMessage_User
     _impl_.command_line_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_command_line()) {
-    _this->_impl_.command_line_.Set(from._internal_command_line(),
+    _this->_impl_.command_line_.Set(from._internal_command_line(), 
       _this->GetArenaForAllocation());
   }
   _impl_.autoexec_cfg_.InitDefault();
@@ -9055,7 +9055,7 @@ CUserMessage_UserSentBugBug::CUserMessage_UserSentBugBug(const CUserMessage_User
     _impl_.autoexec_cfg_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_autoexec_cfg()) {
-    _this->_impl_.autoexec_cfg_.Set(from._internal_autoexec_cfg(),
+    _this->_impl_.autoexec_cfg_.Set(from._internal_autoexec_cfg(), 
       _this->GetArenaForAllocation());
   }
   _impl_.command_logs_.InitDefault();
@@ -9063,7 +9063,7 @@ CUserMessage_UserSentBugBug::CUserMessage_UserSentBugBug(const CUserMessage_User
     _impl_.command_logs_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_command_logs()) {
-    _this->_impl_.command_logs_.Set(from._internal_command_logs(),
+    _this->_impl_.command_logs_.Set(from._internal_command_logs(), 
       _this->GetArenaForAllocation());
   }
   if (from._internal_has_system_specs()) {
