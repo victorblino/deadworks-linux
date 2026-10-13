@@ -194,7 +194,6 @@ internal static class ConCommandManager
             : handler;
 
         AddHandler(name, wrapped);
-
         NativeRegisterConCommand(name, description, BuildConCommandFlags(serverOnly));
 
         _logger.LogDebug("Registered built-in concommand: {CommandName}{ServerOnly}", name, serverOnly ? " (server-only)" : "");
@@ -206,7 +205,6 @@ internal static class ConCommandManager
 
         foreach (var plugin in plugins)
         {
-            RegisterConCommands(normalizedPath, plugin, registered);
             RegisterConVars(normalizedPath, plugin, registered);
         }
 
@@ -412,9 +410,11 @@ internal static class ConCommandManager
 
     internal static object ConvertValue(string arg, Type type)
     {
-        if (type == typeof(int)) return int.Parse(arg);
-        if (type == typeof(float)) return float.Parse(arg);
-        if (type == typeof(double)) return double.Parse(arg);
+        // Invariant: "1.5" must mean one and a half on every server, not be refused (ru-RU) or read as 15 (de-DE).
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        if (type == typeof(int)) return int.Parse(arg, invariant);
+        if (type == typeof(float)) return float.Parse(arg, invariant);
+        if (type == typeof(double)) return double.Parse(arg, invariant);
         if (type == typeof(bool))
         {
             if (arg == "1" || arg.Equals("true", StringComparison.OrdinalIgnoreCase)) return true;
@@ -422,7 +422,9 @@ internal static class ConCommandManager
             return bool.Parse(arg);
         }
         if (type == typeof(string)) return arg;
-        if (type == typeof(long)) return long.Parse(arg);
+        if (type == typeof(long)) return long.Parse(arg, invariant);
+        if (type == typeof(uint)) return uint.Parse(arg, invariant);
+        if (type == typeof(ulong)) return ulong.Parse(arg, invariant);
 
         throw new NotSupportedException($"Type '{type.Name}' is not supported");
     }
@@ -434,7 +436,9 @@ internal static class ConCommandManager
         string description,
         bool serverOnly,
         Action<ConCommandContext> handler,
-        bool hidden = false)
+        bool hidden = false,
+        Func<CCitadelPlayerController?, bool>? canRun = null,
+        string? aliasOf = null)
     {
         Action<ConCommandContext> wrapped = serverOnly
             ? ctx =>
@@ -460,7 +464,7 @@ internal static class ConCommandManager
             registered.Add((name, wrapped));
         }
 
-        PluginRegistrationTracker.Add(normalizedPath, "command", name, description, hidden);
+        PluginRegistrationTracker.Add(normalizedPath, "command", name, description, hidden, canRun, aliasOf);
 
         NativeRegisterConCommand(name, description, BuildConCommandFlags(serverOnly));
     }

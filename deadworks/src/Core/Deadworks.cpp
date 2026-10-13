@@ -161,6 +161,9 @@ void Deadworks::PostInit() {
     HookInline(hooks::g_CGCClientSystem_OnServerVersionCheck,
                "CGCClientSystem::OnServerVersionCheck",
                &hooks::Hook_CGCClientSystem_OnServerVersionCheck);
+    HookInline(hooks::g_CCitadelServerGCSystem_Init,
+               "CCitadelServerGCSystem::Init",
+               &hooks::Hook_CCitadelServerGCSystem_Init);
 
     // VMT hooks - these use virtual indices, not signatures
     auto &mem = MemoryDataLoader::Get();
@@ -424,7 +427,7 @@ bool Deadworks::OnPre_PostEventAbstract(int msgId, const CNetMessage *pData, uin
     return result >= 1;
 }
 
-static constexpr ptrdiff_t kServerAddonsOffset = 0x158;
+static constexpr ptrdiff_t kServerAddonsOffset = 0x178;
 
 void Deadworks::OnPre_ReplyConnection(void *server, CServerSideClientBase *client) {
     if (m_desiredServerAddons.empty())
@@ -555,14 +558,19 @@ bool Deadworks::On_ISource2GameClients_ClientConnect(CPlayerSlot slot, const cha
         std::wstring wip(ipLen - 1, L'\0');
         MultiByteToWideChar(CP_UTF8, 0, ip.c_str(), -1, wip.data(), ipLen);
 
+        TakeConnectRejectReason(); // drop anything left over from an earlier call
         uint8_t allowed = m_managed.onClientConnect(
             slot.Get(),
             reinterpret_cast<const char16_t *>(wname.c_str()),
             xuid,
             reinterpret_cast<const char16_t *>(wip.c_str()));
 
-        if (!allowed)
+        if (!allowed) {
+            std::string reason = TakeConnectRejectReason();
+            if (!reason.empty() && pRejectReason)
+                pRejectReason->Set(reason.c_str());
             return false;
+        }
     }
 
     return true;

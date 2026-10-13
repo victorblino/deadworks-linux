@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace deadworks {
 
@@ -183,11 +184,26 @@ struct NativeCallbacks {
     void(__cdecl *SetSolidFlags)(void *collision, uint8_t flags);
     void(__cdecl *SetCollisionEnabled)(void *collision, uint8_t enabled);
     void(__cdecl *SetEntityCollisionsWith)(void *entity, void *other, uint8_t enabled);
+    // 1 once Steam has validated the client in this slot's ticket, so its SteamID can be trusted.
+    uint8_t(__cdecl *IsClientAuthenticated)(int32_t slot);
+    // Disconnects a client with a reason string, which the engine can pass on to the client.
+    void(__cdecl *KickClient)(int32_t slot, const char *reason, int32_t code);
+    // 1 if the engine can load the named map.
+    uint8_t(__cdecl *IsMapValid)(const char *map);
+    // Called by managed code while it rejects a ClientConnect; the text becomes the engine's reject reason.
+    void(__cdecl *SetConnectRejectReason)(const char *reason);
+    // Steam gameserver rules store, surfaced by A2S_RULES. Both return 0 if the Steam
+    // gameserver interface could not be resolved.
+    uint8_t(__cdecl *ClearServerKeyValues)();
+    uint8_t(__cdecl *SetServerKeyValue)(const char *key, const char *value);
 };
 
 void PopulateNativeCallbacks(NativeCallbacks &callbacks);
 
 // Resolve function pointers needed by Native* callbacks (called from PostInit)
 void ResolveNativeStatics();
+
+// Returns and clears the reason managed code set with SetConnectRejectReason.
+std::string TakeConnectRejectReason();
 
 } // namespace deadworks

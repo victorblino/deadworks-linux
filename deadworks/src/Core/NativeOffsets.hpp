@@ -26,9 +26,13 @@ constexpr int32_t kMaxPlayerControllerSize = 0x2000;
 // signatured directly, so it is resolved from the E8 call inside this anchor.
 constexpr uintptr_t kHeroDefMgrAnchor_GetManagerCall = 0xE;
 
+// CCitadelServerGCSystem
+// Unix time of the maximum-uptime shutdown; 0 means none. No schema entry; server_dump_state prints it.
+constexpr uintptr_t kServerGCSystem_MaxUptimeShutdownTime = 0x430;
+
 // CCitadelGameRules::BuildGameSessionManifest
-constexpr uintptr_t kBGSM_PrecacheGlobalLea = 0x33B;
-constexpr uintptr_t kBGSM_PrecacheCall = 0x342;
+constexpr uintptr_t kBGSM_PrecacheGlobalLea = 0x389;
+constexpr uintptr_t kBGSM_PrecacheCall = 0x394;
 
 } // namespace deadworks::offsets
 

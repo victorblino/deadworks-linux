@@ -14,6 +14,8 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<byte*, ulong> FindConVar => (delegate* unmanaged[Cdecl]<byte*, ulong>)_cb.FindConVar;
 	public static delegate* unmanaged[Cdecl]<ulong, int, void> SetConVarInt => (delegate* unmanaged[Cdecl]<ulong, int, void>)_cb.SetConVarInt;
 	public static delegate* unmanaged[Cdecl]<ulong, float, void> SetConVarFloat => (delegate* unmanaged[Cdecl]<ulong, float, void>)_cb.SetConVarFloat;
+	public static delegate* unmanaged[Cdecl]<byte> ClearServerKeyValues => (delegate* unmanaged[Cdecl]<byte>)_cb.ClearServerKeyValues;
+	public static delegate* unmanaged[Cdecl]<byte*, byte*, byte> SetServerKeyValue => (delegate* unmanaged[Cdecl]<byte*, byte*, byte>)_cb.SetServerKeyValue;
 	public static delegate* unmanaged[Cdecl]<void*, byte*> GetEntityDesignerName => (delegate* unmanaged[Cdecl]<void*, byte*>)_cb.GetEntityDesignerName;
 	public static delegate* unmanaged[Cdecl]<void*, byte*> GetEntityClassname => (delegate* unmanaged[Cdecl]<void*, byte*>)_cb.GetEntityClassname;
 	public static delegate* unmanaged[Cdecl]<uint, void*> GetEntityFromHandle => (delegate* unmanaged[Cdecl]<uint, void*>)_cb.GetEntityFromHandle;
@@ -154,6 +156,10 @@ internal static unsafe class NativeInterop
 	public static delegate* unmanaged[Cdecl]<int, int, void> DisconnectClient => (delegate* unmanaged[Cdecl]<int, int, void>)_cb.DisconnectClient;
 	public static delegate* unmanaged[Cdecl]<byte, void> SetMatchStartOnAnyMap => (delegate* unmanaged[Cdecl]<byte, void>)_cb.SetMatchStartOnAnyMap;
 	public static delegate* unmanaged[Cdecl]<byte> GetMatchStartOnAnyMap => (delegate* unmanaged[Cdecl]<byte>)_cb.GetMatchStartOnAnyMap;
+	public static delegate* unmanaged[Cdecl]<int, byte> IsClientAuthenticated => (delegate* unmanaged[Cdecl]<int, byte>)_cb.IsClientAuthenticated;
+	public static delegate* unmanaged[Cdecl]<int, byte*, int, void> KickClient => (delegate* unmanaged[Cdecl]<int, byte*, int, void>)_cb.KickClient;
+	public static delegate* unmanaged[Cdecl]<byte*, byte> IsMapValid => (delegate* unmanaged[Cdecl]<byte*, byte>)_cb.IsMapValid;
+	public static delegate* unmanaged[Cdecl]<byte*, void> SetConnectRejectReason => (delegate* unmanaged[Cdecl]<byte*, void>)_cb.SetConnectRejectReason;
 
 	// Entity movement and class checks
 	public static delegate* unmanaged[Cdecl]<void*, byte, void> SetMoveType => (delegate* unmanaged[Cdecl]<void*, byte, void>)_cb.SetMoveType;

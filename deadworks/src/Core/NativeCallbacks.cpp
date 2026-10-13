@@ -40,6 +40,7 @@
 #include <server_class.h>
 #include <icvar.h>
 #include <tier0/icommandline.h>
+#include <steam/isteamgameserver.h>
 
 using namespace deadworks;
 
@@ -226,7 +227,7 @@ static void __cdecl NativeGetSchemaField(const char *className, const char *fiel
     SchemaKey key = schema::GetOffset(className, classHash, fieldName, memberHash);
     result->offset = key.Offset;
     result->chainOffset = schema::FindChainOffset(className, classHash);
-    result->networked = key.Networked ? 1 : 0;
+    result->networked = static_cast<uint8_t>(schema::FieldNetworked(className, classHash, memberHash));
     result->_pad = 0;
 }
 
@@ -450,6 +451,36 @@ static void __cdecl NativeDisconnectClient(int32_t slot, int32_t reason) {
     if (!g_pEngineServer || slot < 0)
         return;
     g_pEngineServer->DisconnectClient(CPlayerSlot(slot), static_cast<ENetworkDisconnectionReason>(reason));
+}
+
+static uint8_t __cdecl NativeIsClientAuthenticated(int32_t slot) {
+    if (!g_pEngineServer || slot < 0)
+        return 0;
+    return g_pEngineServer->IsClientFullyAuthenticated(CPlayerSlot(slot)) ? 1 : 0;
+}
+
+static void __cdecl NativeKickClient(int32_t slot, const char *reason, int32_t code) {
+    if (!g_pEngineServer || slot < 0)
+        return;
+    g_pEngineServer->KickClient(CPlayerSlot(slot), reason ? reason : "", static_cast<ENetworkDisconnectionReason>(code));
+}
+
+static uint8_t __cdecl NativeIsMapValid(const char *map) {
+    if (!g_pEngineServer || !map || !map[0])
+        return 0;
+    return g_pEngineServer->IsMapValid(map) != 0 ? 1 : 0;
+}
+
+static std::string g_connectRejectReason;
+
+static void __cdecl NativeSetConnectRejectReason(const char *reason) {
+    g_connectRejectReason = reason ? reason : "";
+}
+
+std::string deadworks::TakeConnectRejectReason() {
+    std::string reason = std::move(g_connectRejectReason);
+    g_connectRejectReason.clear();
+    return reason;
 }
 
 // --- Engine log forwarding to managed code ---
@@ -768,6 +799,51 @@ static void __cdecl NativeSetServerAddons(const char *addons) {
     g_Log->Info("[Addons] Set desired server addons to '{}'", addons ? addons : "");
 }
 
+// --- Steam gameserver rules (A2S_RULES key/values) ---
+//
+// The A2S_INFO response is assembled by Steam from ISteamGameServer state - every field of it
+// maps to a setter engine2 calls (SetServerName/SetMapName/SetModDir/SetGameTags/...), and a
+// value written to sv_tags round-trips out through the A2S keywords field. A2S_RULES is fed
+// the same way, from the key/value store below, which nothing in engine2 or server.dll ever
+// touches - hence the empty (silent) rules response.
+//
+// Resolved out of the already-loaded steam_api64.dll rather than linked, so the module keeps
+// no hard dependency on it. Deliberately not cached: CNetworkGameServer re-inits the Steam
+// gameserver on port/appid change, which invalidates the interface pointer.
+using FnGameServerGetHSteamUser = HSteamUser(S_CALLTYPE *)();
+using FnFindOrCreateGameServerInterface = void *(S_CALLTYPE *)(HSteamUser, const char *);
+
+static ISteamGameServer *GetSteamGameServer() {
+    HMODULE mod = GetModuleHandleA("steam_api64.dll");
+    if (!mod)
+        return nullptr;
+
+    auto getUser = reinterpret_cast<FnGameServerGetHSteamUser>(
+        GetProcAddress(mod, "SteamGameServer_GetHSteamUser"));
+    auto findOrCreate = reinterpret_cast<FnFindOrCreateGameServerInterface>(
+        GetProcAddress(mod, "SteamInternal_FindOrCreateGameServerInterface"));
+    if (!getUser || !findOrCreate)
+        return nullptr;
+
+    return static_cast<ISteamGameServer *>(findOrCreate(getUser(), STEAMGAMESERVER_INTERFACE_VERSION));
+}
+
+static uint8_t __cdecl NativeClearServerKeyValues() {
+    auto *gs = GetSteamGameServer();
+    if (!gs)
+        return 0;
+    gs->ClearAllKeyValues();
+    return 1;
+}
+
+static uint8_t __cdecl NativeSetServerKeyValue(const char *key, const char *value) {
+    auto *gs = GetSteamGameServer();
+    if (!gs || !key || !*key)
+        return 0;
+    gs->SetKeyValue(key, value ? value : "");
+    return 1;
+}
+
 static uint8_t __cdecl NativeAddFileSystemSearchPath(const char *path, const char *pathID, int addType) {
     if (!g_pFullFileSystem || !path) return 0;
     g_pFullFileSystem->AddSearchPath(path, pathID ? pathID : "GAME", static_cast<SearchPathAdd_t>(addType));
@@ -825,9 +901,20 @@ static void ConCommandDispatchCallback(const CCommandContext &context, const CCo
         return;
 
     int playerSlot = context.GetPlayerSlot().Get();
-    int argc = args.ArgC();
-    const char *command = argc > 0 ? args[0] : "";
-    const char **argv = args.ArgV();
+
+    // The engine splits on its break characters ({}()':) as well as spaces, so "STEAM_0:1:11101" arrived as five
+    // arguments and "it's" as three. Re-split the raw line on whitespace and quotes only, the way chat commands are.
+    static characterset_t s_noBreaks = [] {
+        characterset_t set;
+        CharacterSetBuild(&set, "");
+        return set;
+    }();
+    CCommand retokenized;
+    const CCommand &source = retokenized.Tokenize(args.GetCommandString(), &s_noBreaks) ? retokenized : args;
+
+    int argc = source.ArgC();
+    const char *command = argc > 0 ? source[0] : "";
+    const char **argv = source.ArgV();
 
     g_ManagedConCommandDispatch(playerSlot, command, argc, argv);
 }
@@ -1289,6 +1376,8 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
 
     // Server addons
     callbacks.SetServerAddons = &NativeSetServerAddons;
+    callbacks.ClearServerKeyValues = &NativeClearServerKeyValues;
+    callbacks.SetServerKeyValue = &NativeSetServerKeyValue;
     callbacks.AddFileSystemSearchPath = &NativeAddFileSystemSearchPath;
 
     // Fake clients
@@ -1296,6 +1385,10 @@ void deadworks::PopulateNativeCallbacks(NativeCallbacks &callbacks) {
     callbacks.DisconnectClient = &NativeDisconnectClient;
     callbacks.SetMatchStartOnAnyMap = &NativeSetMatchStartOnAnyMap;
     callbacks.GetMatchStartOnAnyMap = &NativeGetMatchStartOnAnyMap;
+    callbacks.IsClientAuthenticated = &NativeIsClientAuthenticated;
+    callbacks.KickClient = &NativeKickClient;
+    callbacks.IsMapValid = &NativeIsMapValid;
+    callbacks.SetConnectRejectReason = &NativeSetConnectRejectReason;
 
     // Command line
     callbacks.HasCommandLineParm = &NativeHasCommandLineParm;
