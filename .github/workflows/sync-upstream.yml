@@ -28,5 +28,22 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/Deadworks-net/deadworks.git
           git fetch upstream main
-          git merge --no-edit upstream/main
+          if ! git merge --no-edit -X ours upstream/main; then
+            if git diff --quiet --diff-filter=U; then
+              exit 1
+            fi
+
+            while IFS= read -r -d '' path; do
+              if git cat-file -e "HEAD:$path" 2>/dev/null; then
+                git checkout --ours -- "$path"
+                git add -- "$path"
+              else
+                git rm --ignore-unmatch -- "$path"
+              fi
+            done < <(git diff --name-only --diff-filter=U -z)
+
+            git diff --quiet --diff-filter=U
+            git diff --cached --check
+            git commit --no-edit
+          fi
           git push origin main
