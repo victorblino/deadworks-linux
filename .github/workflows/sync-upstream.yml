@@ -28,7 +28,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream https://github.com/Deadworks-net/deadworks.git
           git fetch upstream main
-          if ! git merge --no-edit -X ours upstream/main; then
+          if ! git merge --no-edit --no-ff --no-commit -X ours upstream/main; then
             if git diff --quiet --diff-filter=U; then
               exit 1
             fi
@@ -43,6 +43,10 @@ jobs:
             done < <(git diff --name-only --diff-filter=U -z)
 
             git diff --quiet --diff-filter=U
+          fi
+
+          if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+            git restore --source=HEAD --staged --worktree -- .github/workflows
             git diff --cached --check
             git commit --no-edit
           fi
