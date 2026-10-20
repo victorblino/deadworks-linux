@@ -17298,7 +17298,7 @@ CSVCMsg_EncryptedData::CSVCMsg_EncryptedData(const CSVCMsg_EncryptedData& from)
     _impl_.encrypted_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_encrypted()) {
-    _this->_impl_.encrypted_.Set(from._internal_encrypted(),
+    _this->_impl_.encrypted_.Set(from._internal_encrypted(), 
       _this->GetArenaForAllocation());
   }
   _this->_impl_.key_type_ = from._impl_.key_type_;
@@ -26456,7 +26456,7 @@ CMsgServerUserCmd::CMsgServerUserCmd(const CMsgServerUserCmd& from)
     _impl_.delta_data_.Set("", GetArenaForAllocation());
   #endif // PROTOBUF_FORCE_COPY_DEFAULT_STRING
   if (from._internal_has_delta_data()) {
-    _this->_impl_.delta_data_.Set(from._internal_delta_data(),
+    _this->_impl_.delta_data_.Set(from._internal_delta_data(), 
       _this->GetArenaForAllocation());
   }
   ::memcpy(&_impl_.cmd_number_, &from._impl_.cmd_number_,
