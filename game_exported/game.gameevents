@@ -647,7 +647,7 @@
 	{
 		"state"		"int"
 	}
-
+	
 	"internal_mode_event_trigger"
 	{
 		"event"		"int"
